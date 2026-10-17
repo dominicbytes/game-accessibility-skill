@@ -11,12 +11,18 @@
 ## [method A11ySettings.resolve_toggle] and follow value [code]not reduce_motion[/code]:
 ## [method allow_auto_camera] (motion.auto_camera), [method allow_fov_effects] (motion.fov_effects),
 ## [method allow_speed_lines] (motion.speed_lines), [method allow_parallax] (motion.parallax) and
-## [method allow_menu_animation] (motion.menu_animation). Zoom pulses follow the umbrella through
-## [method scale_zoom_pulse]. Set [member camera] to keep a Camera3D's FOV in sync with motion.fov.
+## [method allow_menu_animation] (motion.menu_animation). Zoom pulses are FOV effects:
+## [method scale_zoom_pulse] resolves through [method allow_fov_effects]. Set [member camera] to keep
+## a Camera3D's FOV in sync with motion.fov.
+##
+## Dynamic FOV (sprint, aim, boost): write the camera FOV every frame as the player's current base
+## FOV plus the authored offset only while [method allow_fov_effects] is true, so turning the effect
+## off mid-sprint returns to the base FOV.
 class_name A11yCameraComfort
 extends Node
 
-## Camera whose vertical FOV follows motion.fov. Optional.
+## Camera whose vertical FOV follows motion.fov. Optional. Its FOV is also reset to motion.fov when
+## FOV effects stop being allowed (motion.fov_effects or motion.reduce_motion changed).
 @export var camera: Camera3D
 ## Store override; null uses [method A11ySettings.active].
 var settings: A11ySettings = null
@@ -138,9 +144,10 @@ func allow_menu_animation() -> bool:
 	return allows_motion("motion.menu_animation")
 
 
-## Zoom pulse amount; 0 while reduce motion is on.
+## Zoom pulse amount; 0 while FOV effects are not allowed (motion.fov_effects, which follows
+## motion.reduce_motion unless set to "on" or "off").
 func scale_zoom_pulse(amount: float) -> float:
-	return 0.0 if reduce_motion() else amount
+	return amount if allow_fov_effects() else 0.0
 
 
 ## Applies motion.fov (vertical degrees) to [param target].
@@ -154,5 +161,7 @@ func _on_setting_changed(id: String, _value_changed: Variant) -> void:
 		return
 	if id == "motion.fov":
 		apply_fov(camera)
+	elif (id == "motion.fov_effects" or id == "motion.reduce_motion") and not allow_fov_effects():
+		apply_fov(camera)   # drop an active sprint/aim/boost offset at once
 	elif id == "motion.depth_of_field" and camera.attributes is CameraAttributesPractical:
 		apply_depth_of_field(camera.attributes as CameraAttributesPractical)

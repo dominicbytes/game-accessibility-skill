@@ -107,7 +107,7 @@ engines/godot|unity|unreal|other sample code and integration guides
 
 | Engine | Status |
 | --- | --- |
-| **Godot 4.3+ / Redot** | Drop-in addon (settings store, policies, auto-generated accessible settings menu, captions, TTS narrator, flash guard, content variants, guidance layer, colour tokens). **40/40 tests pass headless on Redot 26.3** (earlier rounds also on 26.3-stable) (`bash tests/run_godot_tests.sh`, with `REDOT_BIN` set). TTS speech, AccessKit screen-reader output and exported builds were not exercised. |
+| **Godot 4.3+ / Redot** | Drop-in addon (settings store, policies, auto-generated accessible settings menu, captions, TTS narrator, flash guard, content variants, guidance layer, colour tokens). **43/43 tests pass headless on Redot 26.3** (earlier rounds also on 26.3-stable) (`bash tests/run_godot_tests.sh`, with `REDOT_BIN` set). TTS speech, AccessKit screen-reader output and exported builds were not exercised. |
 | **Unity 2022.3+ / 6** | Plain C# core (netstandard2.1) plus Unity adapters. The engine-free core is compiled with Roslyn `csc` and exercised by `bash tests/unity_core/run_unity_core_tests.sh`. The Unity adapters were only compiled against stubs and have **never run in the Unity Editor**, so please report problems. |
 | **Unreal Engine 5** | Runtime module (subsystems and components). **Not compiled here**, because there was no Unreal or C++ toolchain. Please report compile errors. |
 | Others | A guide for web/canvas, Phaser, PixiJS, GameMaker, RPG Maker MZ, Ren'Py, Twine, Bevy, MonoGame/FNA, LÖVE, Defold, Construct, Roblox and Minecraft modding, plus a minimal JS reference. |

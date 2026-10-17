@@ -8,6 +8,12 @@
 //   narration.enabled) or Dialogue (unvoiced lines, narration.dialogue). Turning a channel's setting off stops
 //   and discards that channel's current and queued speech at once; the other channel is untouched.
 // - Route ownership and the channel's setting are checked again before every queued utterance is dispatched.
+// - Handover to the native screen reader (one policy for the active utterance and the queue): self-voicing is
+//   stopped first, then the still-required entries go to the reader in order, the interrupted active one first.
+//   Still required = any critical entry, and dialogue that is not focus speech. Menu and focus speech is dropped
+//   (the reader speaks focused controls itself). Critical information is never lost and no native announcement
+//   is ever sent while self-voicing is still speaking. The backend cannot report how far it got, so an
+//   interrupted utterance is re-announced in full.
 
 using System;
 using System.Collections.Generic;
@@ -38,6 +44,7 @@ namespace GameAccessibility
         bool IsAvailable { get; }
         bool IsSpeaking { get; }
         void Speak(string text, bool interrupt);
+        /// <summary>Silences speech at once: IsSpeaking is false when it returns. Handover to the screen reader relies on it.</summary>
         void Stop();
         /// <summary>1 = the voice's normal rate. Receives narration.rate (0.5..2.5).</summary>
         void SetRate(float rate);
@@ -114,6 +121,7 @@ namespace GameAccessibility
 
             if (IsNativeRoute)
             {
+                HandOverToNativeRoute(); // the reader may have started since the last Tick: never speak over self-voicing
                 if (priority == NarrationPriority.Focus) return; // the screen reader already reads focused nodes
                 Announce?.Invoke(text);
                 return;
@@ -176,26 +184,38 @@ namespace GameAccessibility
             }
         }
 
-        // The OS screen reader owns speech now. Self-voiced menu and focus speech is dropped (the reader speaks the
-        // focused control itself) and stopped if it is playing, so two voices never overlap. Queued dialogue and
-        // critical announcements are handed to the reader instead of being lost.
+        // The OS screen reader owns speech now. Policy "stop and transfer": any self-voiced utterance still playing is
+        // stopped BEFORE anything is announced natively, so two voices never overlap. Then the still-required
+        // entries are handed to the reader in order: the interrupted active utterance first (re-announced in full,
+        // since the backend cannot report its position), then the queue (critical entries already lead it).
+        // Menu and focus speech is dropped: the reader speaks the focused control itself.
         private void HandOverToNativeRoute()
         {
-            if (_hasCurrent && _current.Channel == NarrationChannel.Menu)
+            bool transferCurrent = false;
+            Entry current = _current;
+            if (_hasCurrent)
             {
                 _hasCurrent = false;
-                Backend.Stop();
+                if (Backend != null && Backend.IsSpeaking)
+                {
+                    Backend.Stop();
+                    transferCurrent = StillRequired(current);
+                }
             }
-            if (_queue.Count == 0) return;
+            if (!transferCurrent && _queue.Count == 0) return;
             var pending = _queue.ToArray();
             _queue.Clear();
+            if (transferCurrent) Announce?.Invoke(current.Text);
             foreach (Entry e in pending)
             {
-                bool keep = e.Priority == NarrationPriority.Critical
-                    || (e.Channel == NarrationChannel.Dialogue && e.Priority != NarrationPriority.Focus);
-                if (keep) Announce?.Invoke(e.Text);
+                if (StillRequired(e)) Announce?.Invoke(e.Text);
             }
         }
+
+        // Critical information, and dialogue the player would otherwise miss, survives a route change.
+        private static bool StillRequired(Entry e) =>
+            e.Priority == NarrationPriority.Critical
+            || (e.Channel == NarrationChannel.Dialogue && e.Priority != NarrationPriority.Focus);
 
         /// <summary>Stops and discards current and queued speech of one channel only.</summary>
         public void StopChannel(NarrationChannel channel)

@@ -134,16 +134,18 @@ static func battle_speed() -> float:
 
 
 ## Whether scenes listed in the content notices may be skipped (with a short text summary).
-## Follows content.scene_skip only; independent of the challenge skip.
+## Follows content.scene_skip only; independent of the challenge skip. False when content.scene_skip
+## is not in the registry (pruned): the registry default applies only to a registered key.
 static func scene_skip_offered() -> bool:
 	var store: A11ySettings = _store()
-	return store != null and store.get_bool("content.scene_skip", true)
+	return store != null and store.get_bool("content.scene_skip", false)
 
 
-## Whether the pause menu should offer "Skip challenge". Follows assist.skip_available only.
+## Whether the pause menu should offer "Skip challenge". Follows assist.skip_available only. False
+## when assist.skip_available is not in the registry (pruned).
 static func skip_offered() -> bool:
 	var store: A11ySettings = _store()
-	return store != null and store.get_bool("assist.skip_available", true)
+	return store != null and store.get_bool("assist.skip_available", false)
 
 
 ## Requests a challenge skip (puzzle, chase, boss), gated on assist.skip_available. Emits

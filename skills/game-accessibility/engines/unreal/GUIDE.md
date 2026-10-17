@@ -264,7 +264,9 @@ overlapping shaders, so analyse captured footage as well, as a separate gate (se
 - **Turning narration off stops it.** The queue subscribes to `OnSettingChanged`. Turning
   `narration.enabled` off stops the current menu/focus utterance and discards queued menu speech.
   Dialogue reading (`narration.dialogue`) is independent: it keeps going, and turning it off stops only
-  dialogue. Every queued item is re-checked (setting and route) just before dispatch.
+  dialogue. Interrupting menu speech only replaces menu speech: a focus change during a dialogue line
+  waits for that line to finish, then speaks. Every queued item is re-checked (setting and route) just
+  before dispatch.
 - **Test packaged/Standalone builds on each target.** TTS has behaved differently in Play In Editor
   (UE-161327), and the export target decides the backend.
 
@@ -301,7 +303,7 @@ this MIT module or your MIT code**, and do not import the shooter framework to g
 - [ ] A scene skip works with `assist.skip_available` off, and a challenge skip works with
       `content.scene_skip` off. A double request completes the challenge once.
 - [ ] Turning menu narration off mid-utterance stops it and drops the queue; dialogue reading
-      continues.
+      continues. Moving menu focus while a dialogue line is read lets the line finish, then speaks focus.
 - [ ] A long translated subtitle at 200% size is paginated; no word is clipped.
 - [ ] The toggle latch clears on pause, alt-tab and controller unplug. QTE auto mode uses the success
       branch.

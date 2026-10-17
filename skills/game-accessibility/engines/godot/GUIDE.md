@@ -5,7 +5,7 @@ For coding agents. The sample is `addons/game_accessibility/`, the contract is
 [core-policy.md](../../references/core-policy.md).
 
 **Verified on:** Redot 26.3 (`26.3.rc.3.custom_build.ccb92435b`, Godot 4.5 based), Windows,
-headless: tests pass **40/40**, also with every default GDScript warning (plus untyped declarations)
+headless: tests pass **43/43**, also with every default GDScript warning (plus untyped declarations)
 promoted to an error. Earlier rounds also passed on `26.3.stable.official.85e520394`. Command, run from the repository root:
 `REDOT_BIN=/path/to/redot tests/run_godot_tests.sh`. It copies the addon, runs `--import`, then
 `--headless --audio-driver Dummy --script res://run_tests.gd --quit-after 600` under `timeout 180`.
@@ -88,10 +88,13 @@ func add_shake(strength: float) -> void:
 	trauma = minf(trauma + comfort.scale_shake(strength), 1.0)
 func _process(delta: float) -> void:
 	camera.v_offset = comfort.scale_bob(bob_curve(walk_time))          # motion.head_bob
-	weapon.position = rest + comfort.scale_sway(sway_offset(walk_time))  # motion.weapon_sway, visual only
+	weapon.position = rest + sway_offset(walk_time) * comfort.scale_sway(1.0)  # motion.weapon_sway, visual only
 	vignette.material.set_shader_parameter("strength", base_vignette * comfort.effects_scale())
-	if comfort.allow_fov_effects():                                     # motion.fov_effects
-		camera.fov = base_fov + sprint_fov_kick
+	# motion.fov_effects: write the FOV every frame from the player's current base FOV, so turning
+	# the effect off mid-sprint returns to the base FOV. Zoom pulses: comfort.scale_zoom_pulse(amount).
+	var base_fov: float = A11y.get_float("motion.fov", 75.0)
+	var fov_kick: float = sprint_fov_kick if sprinting else 0.0
+	camera.fov = base_fov + (fov_kick if comfort.allow_fov_effects() else 0.0)
 	speed_lines.visible = comfort.allow_speed_lines() and speed > 20.0  # motion.speed_lines
 ```
 
@@ -99,7 +102,9 @@ func _process(delta: float) -> void:
 (`follow` / `off` / `on`; `on` means the effect is allowed), resolved with
 `follow_value = not reduce_motion`: `allow_auto_camera()` (`motion.auto_camera`),
 `allow_fov_effects()`, `allow_speed_lines()`, `allow_parallax()` and `allow_menu_animation()`.
-Zoom pulses follow the umbrella (`scale_zoom_pulse()`).
+Zoom pulses are FOV effects: `scale_zoom_pulse()` resolves through `allow_fov_effects()`, so an
+explicit `motion.fov_effects` `on` or `off` wins over the umbrella. When FOV effects stop being
+allowed, the comfort node's `camera` is reset to `motion.fov` at once.
 
 Any `follow`/`off`/`on` key resolves through the store:
 `A11y.resolve_toggle(key, follow_value)` returns true for `on`, false for `off`, and
@@ -259,8 +264,9 @@ Skips: two separate requests, each gated on its own key, reaching the same compl
 `assist.skip_available`; `A11yAssistPolicy.request_scene_skip(scene_id)` (sensitive scenes; then
 show the scene's text summary) follows `content.scene_skip` only. Connect `A11y.skip_requested` to
 the normal success path (same rewards, flags, achievements and checkpoint). It fires once per id;
-repeated requests do nothing. Call `A11y.clear_skip(id)` when the player replays that challenge or
-scene. Achievement code never reads assist state.
+repeated requests do nothing. A skip whose own key is pruned from the registry is never offered
+(the registry default applies only to a registered key). Call `A11y.clear_skip(id)` when the
+player replays that challenge or scene. Achievement code never reads assist state.
 
 ## 6. Remapping with InputMap
 

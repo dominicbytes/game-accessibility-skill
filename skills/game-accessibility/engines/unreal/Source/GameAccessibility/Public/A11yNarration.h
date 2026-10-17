@@ -70,8 +70,9 @@ enum class EA11ySpeechCategory : uint8
  * Bounded priority queue in front of one backend. Never blocks input; speech failure is silent and safe.
  * Two independent categories: menu/UI speech (Speak, gated by narration.enabled) and dialogue reading
  * (unvoiced lines from the caption bus, gated by narration.dialogue). Turning a category's setting off
- * stops its current utterance and discards its queued items; the other category is untouched. Every
- * queued item is re-checked (setting and route ownership) just before it is dispatched.
+ * stops its current utterance and discards its queued items; the other category is untouched. An
+ * interrupting Speak() likewise only stops and drops speech of its own category. Every queued item is
+ * re-checked (setting and route ownership) just before it is dispatched.
  */
 UCLASS()
 class GAMEACCESSIBILITY_API UA11yNarrationSubsystem : public UGameInstanceSubsystem
@@ -86,7 +87,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Accessibility|Narration")
 	void SetBackend(UObject* InBackend);
 
-	/** Menu and UI speech. Gated by narration.enabled. Focus speech replaces stale focus speech. */
+	/**
+	 * Menu and UI speech. Gated by narration.enabled. With bInterrupt, stale non-critical menu speech
+	 * (current and queued) is replaced; a critical utterance is never cut off. Interruption never crosses
+	 * categories: while a dialogue line is being read, this waits for it to finish, then speaks.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Accessibility|Narration")
 	void Speak(const FString& Text, EA11yNarrationPriority Priority = EA11yNarrationPriority::Focus, bool bInterrupt = true);
 

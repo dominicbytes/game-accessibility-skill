@@ -477,6 +477,56 @@ func test_scene_skip_independent_of_challenge_skip() -> void:
 	_eq(completed, ["bridge_puzzle"], "cleared skip completes again on replay")
 
 
+# Writes a copy of the shipped registry with only the listed settings removed and loads it into
+# the active store, as a project that pruned keys would.
+func _load_pruned_registry(remove: PackedStringArray) -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(ADDON + "/settings_registry.json"))
+	var kept: Array = []
+	for entry: Dictionary in data["settings"]:
+		if not remove.has(str(entry["id"])):
+			kept.append(entry)
+	data["settings"] = kept
+	_tmp_index += 1
+	var path: String = "%s/registry_%d.json" % [TMP_DIR, _tmp_index]
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(data))
+	file.close()
+	_check(_store.load_registry(path) == OK, "pruned registry loads")
+
+
+func test_skip_gates_with_pruned_registries() -> void:
+	# [fixture, removed keys, scene skip available, challenge skip available]
+	var fixtures: Array = [
+		["scene-only", PackedStringArray(["assist.skip_available"]), true, false],
+		["challenge-only", PackedStringArray(["content.scene_skip"]), false, true],
+		["neither-key", PackedStringArray(["content.scene_skip", "assist.skip_available"]), false, false],
+	]
+	var completed: Array = []
+	_store.skip_requested.connect(func(id: String) -> void: completed.append(id))
+	for fixture: Array in fixtures:
+		var label: String = fixture[0]
+		var removed: PackedStringArray = fixture[1]
+		var scene_ok: bool = fixture[2]
+		var challenge_ok: bool = fixture[3]
+		_load_pruned_registry(removed)
+		_store.clear_skip()
+		completed.clear()
+		_eq(_store.has_setting("content.scene_skip"), scene_ok, "%s: content.scene_skip registered" % label)
+		_eq(_store.has_setting("assist.skip_available"), challenge_ok, "%s: assist.skip_available registered" % label)
+		_eq(A11yAssistPolicy.scene_skip_offered(), scene_ok, "%s: scene skip offered only when its key is registered" % label)
+		_eq(A11yAssistPolicy.skip_offered(), challenge_ok, "%s: challenge skip offered only when its key is registered" % label)
+		_eq(A11yAssistPolicy.request_scene_skip("spider_nest"), scene_ok, "%s: scene skip request" % label)
+		_eq(A11yAssistPolicy.request_skip("bridge_puzzle"), challenge_ok, "%s: challenge skip request" % label)
+		var expected: Array = []
+		if scene_ok:
+			expected.append("spider_nest")
+		if challenge_ok:
+			expected.append("bridge_puzzle")
+		_eq(completed, expected, "%s: an unavailable route emits no completion event" % label)
+		_check(_store.was_skipped("spider_nest") == scene_ok, "%s: refused scene skip not recorded" % label)
+		_check(_store.was_skipped("bridge_puzzle") == challenge_ok, "%s: refused challenge skip not recorded" % label)
+
+
 # --- Input assist ---------------------------------------------------------------------------------
 
 func test_input_assist_toggle_latch() -> void:
@@ -1015,6 +1065,59 @@ func test_camera_sway_and_motion_overrides() -> void:
 	_store.set_value("motion.auto_camera", "off")
 	_check(not comfort.allow_auto_camera(), "auto camera 'off' without reduce motion")
 	_check(comfort.allow_fov_effects() and comfort.allow_menu_animation(), "other effects still allowed")
+
+
+func test_zoom_pulse_follows_fov_effects() -> void:
+	var comfort: A11yCameraComfort = _add(A11yCameraComfort.new()) as A11yCameraComfort
+	# [reduce_motion, motion.fov_effects, zoom pulse kept]
+	var cases: Array = [
+		[false, "follow", true],
+		[true, "follow", false],
+		[false, "off", false],
+		[true, "on", true],
+		[false, "on", true],
+		[true, "off", false],
+	]
+	for case: Array in cases:
+		var umbrella: bool = case[0]
+		var override: String = case[1]
+		var kept: bool = case[2]
+		_store.set_value("motion.reduce_motion", umbrella)
+		_store.set_value("motion.fov_effects", override)
+		var combo: String = "reduce_motion=%s, fov_effects=%s" % [umbrella, override]
+		_eq(comfort.allow_fov_effects(), kept, "%s: allow_fov_effects" % combo)
+		_eq(comfort.scale_zoom_pulse(0.3), 0.3 if kept else 0.0, "%s: zoom pulse resolves through motion.fov_effects" % combo)
+
+
+func test_fov_effect_on_to_off_restores_base_fov() -> void:
+	var camera: Camera3D = _add(Camera3D.new()) as Camera3D
+	var comfort: A11yCameraComfort = A11yCameraComfort.new()
+	comfort.camera = camera
+	_add(comfort)
+	_store.set_value("motion.fov", 80.0)
+	var kick: float = 12.0
+	# The GUIDE's per-frame write: current base FOV plus the offset only while FOV effects are allowed.
+	var frame: Callable = func() -> void:
+		camera.fov = _store.get_float("motion.fov", 75.0) + (kick if comfort.allow_fov_effects() else 0.0)
+	frame.call()
+	_eq(camera.fov, 92.0, "sprint FOV kick applied while allowed")
+	_store.set_value("motion.fov_effects", "off")
+	_eq(camera.fov, 80.0, "turning FOV effects off mid-sprint restores the base FOV at once")
+	frame.call()
+	_eq(camera.fov, 80.0, "next frame stays at the base FOV")
+	_store.set_value("motion.fov", 85.0)
+	frame.call()
+	_eq(camera.fov, 85.0, "the current base FOV is used, not the one from before")
+	_store.set_value("motion.fov_effects", "follow")
+	frame.call()
+	_eq(camera.fov, 97.0, "kick returns when FOV effects are allowed again")
+	_store.set_value("motion.reduce_motion", true)
+	_eq(camera.fov, 85.0, "reduce motion (followed) also restores the base FOV at once")
+	frame.call()
+	_eq(camera.fov, 85.0, "and the next frame keeps it")
+	_store.set_value("motion.fov_effects", "on")
+	frame.call()
+	_eq(camera.fov, 97.0, "'on' keeps the kick under reduce motion")
 
 
 func test_resolve_toggle_and_outline_classes() -> void:

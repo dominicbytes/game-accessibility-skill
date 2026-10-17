@@ -316,10 +316,54 @@ static class CoreChecks
         Check(CountFlashes(loose, 0, 10, 10.0, 0.4f, 0.09f, false) == 3, "thresholds and budgets cannot be loosened");
         var strict = new FlashGuardCore(st) { LargeAreaThreshold = 0.05f };
         Check(CountFlashes(strict, 0, 10, 10.0, 0.05f, 0.06f, false) == 3, "stricter area threshold honoured");
+
+        // Shortened windows cannot loosen the fixed 1 s / 5 s caps: check every rolling 1 s and 5 s interval.
+        var both = new FlashGuardCore(st) { WindowSeconds = 0.1, LongWindowSeconds = 1 };
+        Check(both.EffectiveWindowSeconds == 1.0 && both.EffectiveLongWindowSeconds == 5.0, "shortened windows clamped to 1 s / 5 s");
+        Check(RollingWindowsHold(both, 25.0, 12.0, out string m1), "shortened windows: every rolling 1 s <= 3 and 5 s <= 9 (" + m1 + ")");
+        Check(RollingWindowsHold(new FlashGuardCore(st) { WindowSeconds = 0.1, LongWindowSeconds = 1 }, 10.0 / 3.0, 12.0, out string m2),
+            "shortened windows at 3.3 Hz: every rolling 1 s <= 3 and 5 s <= 9 (" + m2 + ")");
+        Check(RollingWindowsHold(new FlashGuardCore(st) { WindowSeconds = 0.1 }, 25.0, 12.0, out string m3), "short window 0.1 s alone cannot loosen (" + m3 + ")");
+        Check(RollingWindowsHold(new FlashGuardCore(st) { LongWindowSeconds = 1 }, 10.0 / 3.0, 12.0, out string m4), "long window 1 s alone cannot loosen (" + m4 + ")");
+        Check(RollingWindowsHold(new FlashGuardCore(st) { WindowSeconds = double.NaN, LongWindowSeconds = double.NaN }, 25.0, 12.0, out string m5), "NaN windows use 1 s / 5 s (" + m5 + ")");
+        var longer = new FlashGuardCore(st) { WindowSeconds = 2, LongWindowSeconds = 10 };
+        Check(CountFlashes(longer, 0, 40, 4.0, 1f, 1f, false) == 9 && longer.EffectiveLongWindowSeconds == 10.0, "longer windows are stricter and honoured");
+
+        // NaN area means unknown, so a dim, non-red request still counts (as full screen).
+        Check(CountFlashes(new FlashGuardCore(st), 0, 10, 10.0, 0.01f, float.NaN, false) == 3, "dim non-red NaN-area repeats suppressed beyond the 1 s budget");
+        Check(CountFlashes(new FlashGuardCore(st), 0, 10, 2.0, 0.01f, float.NaN, false) == 9, "dim non-red NaN-area repeats suppressed beyond the 5 s budget");
+        Check(CountFlashes(new FlashGuardCore(st), 0, 10, 10.0, float.NaN, 0.01f, false) == 3, "NaN intensity counted as worst case");
         st.Set("motion.reduce_flashing", true);
         var gReduce = new FlashGuardCore(st);
         Check(CountFlashes(gReduce, 0, 10, 10.0, 0.05f, 0.01f, true) == 3, "red counted with reduce_flashing on");
-        Check(gReduce.RequestFlash(50, 1f, float.NaN).Output == FlashOutput.SteadyFade && !new FlashGuardCore(st).Counts(0f, 0f, false), "NaN area treated as full screen");
+        Check(CountFlashes(new FlashGuardCore(st), 0, 10, 10.0, 0.01f, float.NaN, false) == 3, "dim non-red NaN-area counted with reduce_flashing on");
+    }
+
+    // Requests a full-screen flash at hz for the given seconds, then checks every rolling [t, t + 1) and
+    // [t, t + 5) interval starting at an allowed flash (the worst-case alignment) holds at most 3 and 9.
+    static bool RollingWindowsHold(FlashGuardCore g, double hz, double seconds, out string detail)
+    {
+        var allowed = new List<double>();
+        int n = (int)(seconds * hz);
+        for (int i = 0; i < n; i++)
+        {
+            double t = i / hz;
+            if (g.RequestFlash(t, 1f, 1f).Output != FlashOutput.Suppressed) allowed.Add(t);
+        }
+        int max1 = 0, max5 = 0;
+        foreach (double start in allowed)
+        {
+            int in1 = 0, in5 = 0;
+            foreach (double t in allowed)
+            {
+                if (t >= start && t < start + 1.0) in1++;
+                if (t >= start && t < start + 5.0) in5++;
+            }
+            max1 = Math.Max(max1, in1);
+            max5 = Math.Max(max5, in5);
+        }
+        detail = "allowed " + allowed.Count + ", max per 1 s " + max1 + ", max per 5 s " + max5;
+        return allowed.Count > 0 && max1 <= 3 && max5 <= 9;
     }
 
     // ---- skips: challenge skip and sensitive-scene skip are gated separately and share one completion
@@ -481,6 +525,75 @@ static class CoreChecks
         public void Finish() => IsSpeaking = false;
     }
 
+    // ---- narration handover with a busy backend: content preserved, dispatches never overlap
+    static void HandoverChecks(A11ySettingsStore st)
+    {
+        var be = new FakeBackend();
+        bool native = false;
+        var log = new List<string>(); // native dispatches, in order
+        int overlaps = 0;
+        var q = new NarrationQueue(st)
+        {
+            Backend = be, NativeRouteActive = () => native,
+            Announce = t => { if (be.IsSpeaking) overlaps++; log.Add(t); },
+        };
+
+        // Active critical self-voiced utterance interrupted by handover.
+        const string ledge = "Hold the ledge: press A twice to climb";
+        q.Speak(ledge, NarrationPriority.Critical); q.Tick();
+        q.Speak("menu x");
+        q.Speak("line q", NarrationPriority.Normal, NarrationChannel.Dialogue);
+        q.Speak("crit 2", NarrationPriority.Critical);
+        Check(be.IsSpeaking && be.Spoken.Count == 1 && q.PendingCount == 3, "handover/critical: busy backend speaking critical, rest queued");
+        native = true;
+        q.Tick();
+        Check(be.Stops == 1 && !be.IsSpeaking, "handover/critical: self-voicing stopped first");
+        Check(log.Count == 3 && log[0] == ledge && log[1] == "crit 2" && log[2] == "line q",
+            "handover/critical: active critical transferred before queued entries, menu speech dropped");
+        q.Tick(); q.Tick();
+        Check(log.Count == 3 && q.PendingCount == 0 && be.Spoken.Count == 1, "handover/critical: transferred once, nothing self-voiced afterwards");
+        Check(overlaps == 0, "handover/critical: no overlapping dispatch");
+        native = false;
+
+        // Active self-voiced dialogue when the reader starts.
+        log.Clear();
+        q.Speak("line A", NarrationPriority.Normal, NarrationChannel.Dialogue); q.Tick();
+        q.Speak("menu y");
+        q.Speak("line B", NarrationPriority.Normal, NarrationChannel.Dialogue);
+        Check(be.IsSpeaking && be.Spoken[be.Spoken.Count - 1] == "line A" && q.PendingCount == 2, "handover/dialogue: busy backend speaking dialogue, rest queued");
+        int stops = be.Stops;
+        native = true;
+        q.Tick();
+        Check(be.Stops == stops + 1 && !be.IsSpeaking, "handover/dialogue: fallback dialogue stopped before native output");
+        Check(log.Count == 2 && log[0] == "line A" && log[1] == "line B", "handover/dialogue: active then queued dialogue transferred in order");
+        q.Speak("checkpoint reached");
+        Check(log.Count == 3 && log[2] == "checkpoint reached", "handover/dialogue: later announcements follow the transferred dialogue");
+        Check(overlaps == 0, "handover/dialogue: no overlapping dispatch");
+        native = false;
+
+        // The reader starts between Ticks and a new announcement arrives first: still no overlap, nothing lost.
+        log.Clear();
+        q.Speak("line E", NarrationPriority.Normal, NarrationChannel.Dialogue); q.Tick();
+        q.Speak("line F", NarrationPriority.Normal, NarrationChannel.Dialogue);
+        stops = be.Stops;
+        native = true;
+        q.Speak("objective updated");
+        Check(be.Stops == stops + 1 && !be.IsSpeaking && overlaps == 0, "handover/speak: self-voicing stopped before a native announcement");
+        Check(log.Count == 3 && log[0] == "line E" && log[1] == "line F" && log[2] == "objective updated",
+            "handover/speak: active and queued dialogue announced before the new announcement");
+
+        // An idle backend has nothing to transfer: finished speech is not repeated.
+        native = false;
+        log.Clear();
+        q.Speak("done line", NarrationPriority.Normal, NarrationChannel.Dialogue); q.Tick();
+        be.Finish();
+        stops = be.Stops;
+        native = true;
+        q.Tick();
+        Check(log.Count == 0 && be.Stops == stops, "handover/idle: finished utterance not repeated");
+        q.Dispose();
+    }
+
     // ---- narration: settings and route ownership re-checked; menu off stops menu speech only
     static void NarrationChecks(string json)
     {
@@ -490,7 +603,12 @@ static class CoreChecks
         var be = new FakeBackend();
         bool native = false;
         var announced = new List<string>();
-        var q = new NarrationQueue(st) { Backend = be, NativeRouteActive = () => native, Announce = announced.Add };
+        int overlaps = 0;
+        var q = new NarrationQueue(st)
+        {
+            Backend = be, NativeRouteActive = () => native,
+            Announce = t => { if (be.IsSpeaking) overlaps++; announced.Add(t); },
+        };
 
         q.Speak("menu 1"); q.Speak("menu 2"); q.Speak("line 1", NarrationPriority.Normal, NarrationChannel.Dialogue);
         q.Tick();
@@ -530,12 +648,15 @@ static class CoreChecks
         native = true;
         q.Tick();
         Check(q.PendingCount == 0 && be.Spoken.Count == spokenBefore, "native route: queued self-voicing dropped, nothing dispatched");
-        Check(be.Stops == stops + 1, "native route: current self-voiced menu speech stopped");
-        Check(announced.Contains("line 3") && !announced.Contains("menu 6") && !announced.Contains("menu 7"), "native route: queued dialogue handed to the reader, menu speech dropped");
+        Check(be.Stops == stops + 1 && !be.IsSpeaking, "native route: current self-voiced speech stopped");
+        Check(announced.Count == 2 && announced[0] == "alert" && announced[1] == "line 3",
+            "native route: interrupted critical first, then queued dialogue; menu speech dropped");
+        Check(overlaps == 0, "native route: nothing announced over self-voicing");
         q.Speak("focus", NarrationPriority.Focus);
         q.Speak("notice");
         Check(!announced.Contains("focus") && announced.Contains("notice") && q.PendingCount == 0, "native route: focus left to reader, announcements sent natively");
         native = false;
+        HandoverChecks(st);
 
         // focus replacement and queue cap still hold
         be.Finish(); q.Tick();

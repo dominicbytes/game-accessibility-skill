@@ -2,7 +2,7 @@
 
 > **Verification status. Never run in the Unity Editor, in Play Mode or on a device.**
 > - `Runtime/Core/*.cs` (plain C#) compiles with Roslyn `csc` (C# 8, warnings as errors) against the
->   official netstandard2.1 reference assembly. It passes 186 behaviour checks on the .NET runtime. To re-run
+>   official netstandard2.1 reference assembly. It passes 210 behaviour checks on the .NET runtime. To re-run
 >   both from the repository root: `bash tests/unity_core/run_unity_core_tests.sh`.
 > - `Runtime/Unity/*.cs` (adapters) compiled only against hand-written stubs of the Unity APIs listed in §1,
 >   with and without the accessibility-module, 6000.0/6000.3, platform and TMP defines.
@@ -108,7 +108,8 @@ a11y.Captions.Emit(new CaptionEvent("alarm", CaptionKind.Sound, "snd.alarm", 3f,
     Time.unscaledTimeAsDouble);
 // Flashes: every lightning, hit flash and muzzle flash asks first. A request counts when area >= 0.25 OR
 // intensity >= 0.1 OR it is saturated red (red always counts). Counted flashes: <= 3 in any 1 s AND <= 9 in
-// any 5 s, in every mode (blocks a sustained 2-3 Hz strobe). Budgets and thresholds can only be tightened.
+// any 5 s, in every mode (blocks a sustained 2-3 Hz strobe). Budgets, thresholds and the 1 s / 5 s windows can
+// only be tightened: shorter windows are ignored, longer ones are honoured.
 // Saturated red is also always desaturated. Pass saturatedRed: true for any saturated red effect.
 var d = a11y.FlashGuard.RequestFlash(Time.unscaledTimeAsDouble, intensity: 0.9f, screenArea: 1f, saturatedRed: false);
 if (d.Output == FlashOutput.Flash) PlayFlash(d.Intensity);
@@ -234,9 +235,12 @@ The sample palettes are unvalidated starting points; run `scripts/contrast_check
   dialogue follows `narration.dialogue` on its own. Turning `narration.enabled` off stops the current menu
   speech and discards queued menu speech at once, and dialogue reading carries on. Before each queued
   utterance is dispatched, the route and its setting are checked again. If the screen reader has become
-  active, queued self-voiced menu speech is dropped, and queued dialogue and critical announcements go to the
-  reader. The rules live in Core (`NarrationQueue`), where the checks exercise them with a busy fake
-  backend. **Unity has no built-in cross-platform TTS:** supply a backend (Android `TextToSpeech` through
+  active, the handover policy is "stop and transfer": self-voicing is stopped before anything is sent to the
+  reader, so two voices never overlap. Then the interrupted utterance (re-announced in full, if it is critical
+  or dialogue) and the queued critical announcements and dialogue go to the reader in order. Self-voiced menu
+  and focus speech is dropped, since the reader speaks focused controls itself. Your backend's `Stop()` must
+  silence speech at once. The rules live in Core (`NarrationQueue`), where the checks exercise them with a
+  busy fake backend. **Unity has no built-in cross-platform TTS:** supply a backend (Android `TextToSpeech` through
   `AndroidJavaObject`, `AVSpeechSynthesizer` or SAPI through a native plugin). `LogNarrationBackend` is for
   development only. `INarrationBackend`, `NarrationPriority` and `NarrationChannel` are in the
   `GameAccessibility` namespace.

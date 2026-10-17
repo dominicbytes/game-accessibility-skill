@@ -154,13 +154,15 @@ void UA11yNarrationSubsystem::Enqueue(const FString& Text, EA11yNarrationPriorit
 
 	if (bInterrupt && Priority != EA11yNarrationPriority::Critical)
 	{
-		// Stale speech of the same category is dropped. Critical announcements are never dropped, and
-		// queued lines of the other category are kept.
+		// Within this category only: stale speech is dropped and the current utterance is stopped.
+		// Critical announcements are never dropped. Speech of the other category, current or queued, is
+		// left alone: a menu focus line waits for an in-progress dialogue line to finish (TickQueue
+		// dispatches it once the backend stops speaking) instead of cutting it off.
 		Queue.RemoveAll([Category](const FQueuedSpeech& Item)
 		{
 			return Item.Priority != EA11yNarrationPriority::Critical && Item.Category == Category;
 		});
-		if (bHasCurrent && CurrentPriority != EA11yNarrationPriority::Critical)
+		if (bHasCurrent && CurrentCategory == Category && CurrentPriority != EA11yNarrationPriority::Critical)
 		{
 			IA11yNarrationBackend::Execute_StopSpeaking(Backend);
 			bHasCurrent = false;

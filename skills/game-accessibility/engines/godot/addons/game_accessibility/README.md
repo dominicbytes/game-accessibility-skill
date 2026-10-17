@@ -46,7 +46,7 @@ back to the designer default when a key is pruned. Keep the ids unchanged.
   the missing levels.
 - **Skips.** `A11yAssistPolicy.request_skip(challenge_id)` follows `assist.skip_available`;
   `request_scene_skip(scene_id)` follows `content.scene_skip`. Both emit `A11y.skip_requested` once
-  per id (`A11y.clear_skip(id)` re-arms it).
+  per id (`A11y.clear_skip(id)` re-arms it). A skip whose own key is pruned is never offered.
 - **Narration.** Menu speech follows `narration.enabled` and stops at once (current and queued)
   when it is turned off; dialogue reading (`speak_dialogue()`) follows `narration.dialogue`
   independently. Focus and value changes stay silent while a screen reader is active.
@@ -54,7 +54,7 @@ back to the designer default when a key is pruned. Keep the ids unchanged.
   `input.aim_stabilization` are separate. `content.jump_scares` is `full`/`reduced`;
   `content.scare_warnings` is a separate bool.
 
-Tests: `tests/run_godot_tests.sh` in the skill repository runs 40 headless tests.
+Tests: `tests/run_godot_tests.sh` in the skill repository runs 43 headless tests.
 
 ## Config file (public API)
 

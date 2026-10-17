@@ -4,8 +4,9 @@
 // Contract: references/architecture.md section 8.
 // - A request COUNTS when area >= 0.25 OR intensity >= 0.1 OR it is saturated red (red always counts).
 // - In EVERY mode, counted flashes: at most 3 in any 1-second window AND at most 9 in any 5-second window
-//   (the second limit blocks a sustained 2-3 Hz strobe). Extra requests are suppressed. Both budgets and both
-//   thresholds are hard-clamped: configuration can make the guard stricter, never looser.
+//   (the second limit blocks a sustained 2-3 Hz strobe). Extra requests are suppressed. Both budgets, both
+//   window lengths and both thresholds are hard-clamped: configuration can make the guard stricter, never
+//   looser. Windows shorter than 1 s / 5 s are ignored (1 s / 5 s are used); longer windows are honoured.
 // - With motion.reduce_flashing on: flashes become steady, low-contrast fades with capped intensity.
 // - Saturated red flashes are desaturated in every mode.
 // This limits what the game requests. It cannot measure the rendered frame: analyse captured footage with a
@@ -52,10 +53,20 @@ namespace GameAccessibility
 
         /// <summary>Counted flashes allowed in any 1-second window. Values above 3 are ignored.</summary>
         public int MaxFlashesPerWindow { get; set; } = 3;
+
+        /// <summary>
+        /// Length of the short window. Values below 1 s (or NaN) are ignored and 1 s is used: a shorter window would
+        /// let more than 3 counted flashes into one second. A longer window is stricter and is honoured.
+        /// </summary>
         public double WindowSeconds { get; set; } = 1.0;
 
         /// <summary>Counted flashes allowed in any 5-second window. Values above 9 are ignored.</summary>
         public int MaxFlashesPerLongWindow { get; set; } = 9;
+
+        /// <summary>
+        /// Length of the long window. Values below 5 s (or NaN, or below the effective short window) are ignored:
+        /// a shorter window would let more than 9 counted flashes into five seconds. A longer window is honoured.
+        /// </summary>
         public double LongWindowSeconds { get; set; } = 5.0;
 
         /// <summary>
@@ -74,6 +85,16 @@ namespace GameAccessibility
         /// <summary>Hard limits that configuration cannot loosen.</summary>
         public const int MaxShortBudget = 3, MaxLongBudget = 9;
         public const float MaxAreaThreshold = 0.25f, MaxIntensityThreshold = 0.1f;
+        public const double MinShortWindowSeconds = 1.0, MinLongWindowSeconds = 5.0;
+
+        /// <summary>Short window actually enforced: at least 1 s.</summary>
+        public double EffectiveWindowSeconds =>
+            double.IsNaN(WindowSeconds) ? MinShortWindowSeconds : Math.Max(MinShortWindowSeconds, WindowSeconds);
+
+        /// <summary>Long window actually enforced: at least 5 s and never shorter than the short window.</summary>
+        public double EffectiveLongWindowSeconds =>
+            Math.Max(EffectiveWindowSeconds,
+                double.IsNaN(LongWindowSeconds) ? MinLongWindowSeconds : Math.Max(MinLongWindowSeconds, LongWindowSeconds));
 
         /// <summary>Peak intensity cap used when motion.reduce_flashing is on. Keep it below the bright threshold.</summary>
         public float ReducedIntensityCap { get; set; } = 0.08f;
@@ -104,8 +125,9 @@ namespace GameAccessibility
             bool reduce = ReduceFlashing;
             bool counts = Counts(intensity, screenArea, saturatedRed);
 
-            // _recent holds allowed counted flashes from the last long window, oldest first.
-            double longWindow = Math.Max(LongWindowSeconds, WindowSeconds);
+            // _recent holds allowed counted flashes from the last effective long window, oldest first.
+            double shortWindow = EffectiveWindowSeconds;
+            double longWindow = EffectiveLongWindowSeconds;
             while (_recent.Count > 0 && nowSeconds - _recent.Peek() >= longWindow) _recent.Dequeue();
 
             // Both budgets apply in every mode, before any conversion.
@@ -114,7 +136,7 @@ namespace GameAccessibility
                 int inShort = 0;
                 foreach (double t in _recent)
                 {
-                    if (nowSeconds - t < WindowSeconds) inShort++;
+                    if (nowSeconds - t < shortWindow) inShort++;
                 }
                 bool overShort = inShort >= Math.Min(MaxShortBudget, Math.Max(0, MaxFlashesPerWindow));
                 bool overLong = _recent.Count >= Math.Min(MaxLongBudget, Math.Max(0, MaxFlashesPerLongWindow));
