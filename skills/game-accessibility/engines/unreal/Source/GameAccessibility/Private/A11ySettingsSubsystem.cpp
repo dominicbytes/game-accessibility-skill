@@ -34,6 +34,7 @@ namespace A11ySettingsPrivate
 		{ TEXT("reduce_motion"), TEXT("motion.reduce_motion"), TEXT("true") },
 		{ TEXT("reduce_motion"), TEXT("motion.camera_shake"), TEXT("0") },
 		{ TEXT("reduce_motion"), TEXT("motion.head_bob"), TEXT("0") },
+		{ TEXT("reduce_motion"), TEXT("motion.weapon_sway"), TEXT("0") },
 		{ TEXT("reduce_motion"), TEXT("motion.motion_blur"), TEXT("false") },
 		{ TEXT("reduce_motion"), TEXT("motion.reduce_flashing"), TEXT("true") },
 		{ TEXT("screen_reader_active"), TEXT("narration.enabled"), TEXT("true") },
@@ -371,6 +372,32 @@ FString UA11ySettingsSubsystem::GetValueAsString(FName Key) const
 	return (Def && V) ? ToCanonical(*Def, *V) : FString();
 }
 
+bool UA11ySettingsSubsystem::ResolveToggle(FName Key, bool bFollowValue) const
+{
+	const FA11ySettingDefinition* Def = Definitions.Find(Key);
+	const FA11yStoredValue* V = Values.Find(Key);
+	if (!Def || !V)
+	{
+		return bFollowValue; // the game pruned this override: the umbrella decides
+	}
+	if (Def->Type == EA11ySettingType::Bool)
+	{
+		return V->bBool;
+	}
+	if (Def->Type == EA11ySettingType::Enum || Def->Type == EA11ySettingType::String)
+	{
+		if (V->Str.Equals(TEXT("on"), ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+		if (V->Str.Equals(TEXT("off"), ESearchCase::IgnoreCase))
+		{
+			return false;
+		}
+	}
+	return bFollowValue; // "follow" (or an unexpected value)
+}
+
 bool UA11ySettingsSubsystem::IsExplicitlySet(FName Key) const
 {
 	return ExplicitKeys.Contains(Key);
@@ -573,6 +600,32 @@ int32 UA11ySettingsSubsystem::UndoLastPreset()
 		Save();
 	}
 	return Restored;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Skip requests (shared by challenge skips and sensitive-scene skips)
+// ------------------------------------------------------------------------------------------------
+
+bool UA11ySettingsSubsystem::SubmitSkipRequest(FName Id)
+{
+	if (SubmittedSkipIds.Contains(Id))
+	{
+		return true; // already accepted: the owner is completing it; never complete twice
+	}
+	// Mark before broadcasting, so a listener that re-enters RequestSkip cannot complete twice.
+	SubmittedSkipIds.Add(Id);
+	OnChallengeSkipRequested.Broadcast(Id);
+	return true;
+}
+
+void UA11ySettingsSubsystem::ClearSkipRequest(FName Id)
+{
+	SubmittedSkipIds.Remove(Id);
+}
+
+bool UA11ySettingsSubsystem::IsSkipRequested(FName Id) const
+{
+	return SubmittedSkipIds.Contains(Id);
 }
 
 // ------------------------------------------------------------------------------------------------

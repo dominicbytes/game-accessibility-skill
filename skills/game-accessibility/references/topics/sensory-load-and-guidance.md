@@ -20,9 +20,9 @@ decorative effects, no notifications and no haptics. Decorative blinking (N11) a
 | N06 | Reduce decorative world detail | `effects.particle_density` | 1.0 | C | N, C |
 | N07 | Particle and hit-effect density | `effects.particle_density` | 1.0 | C | N, V |
 | N08 | Fewer notifications, full log kept | `notifications.mode` | `all` | C | N, C |
-| N05 | Static menu backgrounds | `motion.reduce_motion` | false | B | N, C |
+| N05 | Static menu backgrounds | `motion.menu_animation` (umbrella `motion.reduce_motion`) | `follow` | B | N, C |
 | N09 | No autoplay previews (separate sound control) | `game.ui.autoplay` | Designer | B | N, C, S |
-| N10 | No menu transition animation | `motion.reduce_motion` | false | B | N, O |
+| N10 | No menu transition animation | `motion.menu_animation` (umbrella `motion.reduce_motion`) | `follow` | B | N, O |
 | N11 | No decorative blinking or pulsing; critical cues static | `game.ui.decorative_pulses` | Static critical cues | B | N, P |
 | N12 | Vibration intensity and Off | `game.haptics.intensity` | Designer | C | N, M |
 | N13 | Haptics by event category | `game.haptics.categories` | Designer | C | N, H, V |
@@ -101,8 +101,10 @@ Off, On request and Boosted, and treat no choice as a measure of skill.
 
 ### Menus, autoplay and decorative blinking (N05, N09, N10, N11)
 
-- `motion.reduce_motion` freezes menu video and particles and makes transitions instant without
-  losing menu meaning.
+- When `motion.menu_animation` resolves to off (`off`, or `follow` with `motion.reduce_motion` on;
+  resolver in [architecture](../architecture.md) section 1), menu video and particles freeze and
+  transitions become instant without losing menu meaning. A player can stop menu animation and
+  keep in-game parallax, or the reverse.
 - Autoplay trailers and previews have their own off switch and their own sound switch.
 - Replace decorative blinking and pulsing with a static icon or label. Critical cues stay static by
   default. Large or bright flashes go through `FlashGuard`.

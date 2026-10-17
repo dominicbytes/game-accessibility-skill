@@ -4,9 +4,9 @@ For coding agents. The sample is `addons/game_accessibility/`, the contract is
 [architecture.md](../../references/architecture.md), and the rules are
 [core-policy.md](../../references/core-policy.md).
 
-**Verified on:** Redot 26.3-stable (`26.3.stable.official.85e520394`, Godot 4.5 based), Windows,
-headless: tests pass **30/30**, with every default GDScript warning (plus untyped declarations)
-promoted to an error. Command, run from the repository root:
+**Verified on:** Redot 26.3 (`26.3.rc.3.custom_build.ccb92435b`, Godot 4.5 based), Windows,
+headless: tests pass **40/40**, also with every default GDScript warning (plus untyped declarations)
+promoted to an error. Earlier rounds also passed on `26.3.stable.official.85e520394`. Command, run from the repository root:
 `REDOT_BIN=/path/to/redot tests/run_godot_tests.sh`. It copies the addon, runs `--import`, then
 `--headless --audio-driver Dummy --script res://run_tests.gd --quit-after 600` under `timeout 180`.
 `colorblind_sim.gdshader` was rendered on Forward+ (Vulkan) and Compatibility (OpenGL 3.3) and matched
@@ -30,7 +30,7 @@ avoids 4.4+ syntax and guards every 4.5-only API.
 
 ## 2. Install
 
-1. Copy `addons/game_accessibility/` into the project. Enable the plugin (adds autoload `A11y`).
+1. Copy `addons/game_accessibility/` into the project. Enable the plugin (adds autoload `A11y`). Keep the skill's `LICENSE` file (MIT) with the copied code.
 2. Enable `audio/general/text_to_speech` if the game has menus (menu narration is Baseline).
 3. Prune `settings_registry.json` to the signals in the project's `ACCESSIBILITY.md`. Keep ids.
 4. Create audio buses named `Master`, `Music`, `SFX`, `Voice`, `Ambience` for the volume keys.
@@ -87,8 +87,29 @@ var limit := base_limit * A11yAssistPolicy.timer_scale()   # INF when timers are
 func add_shake(strength: float) -> void:
 	trauma = minf(trauma + comfort.scale_shake(strength), 1.0)
 func _process(delta: float) -> void:
-	camera.v_offset = comfort.scale_bob(bob_curve(walk_time))
+	camera.v_offset = comfort.scale_bob(bob_curve(walk_time))          # motion.head_bob
+	weapon.position = rest + comfort.scale_sway(sway_offset(walk_time))  # motion.weapon_sway, visual only
 	vignette.material.set_shader_parameter("strength", base_vignette * comfort.effects_scale())
+	if comfort.allow_fov_effects():                                     # motion.fov_effects
+		camera.fov = base_fov + sprint_fov_kick
+	speed_lines.visible = comfort.allow_speed_lines() and speed > 20.0  # motion.speed_lines
+```
+
+`motion.reduce_motion` is the umbrella. Each automatic or decorative motion has its own override
+(`follow` / `off` / `on`; `on` means the effect is allowed), resolved with
+`follow_value = not reduce_motion`: `allow_auto_camera()` (`motion.auto_camera`),
+`allow_fov_effects()`, `allow_speed_lines()`, `allow_parallax()` and `allow_menu_animation()`.
+Zoom pulses follow the umbrella (`scale_zoom_pulse()`).
+
+Any `follow`/`off`/`on` key resolves through the store:
+`A11y.resolve_toggle(key, follow_value)` returns true for `on`, false for `off`, and
+`follow_value` for `follow` or a key pruned from the registry. There is no outline component in
+this sample; an outline shader or material resolves its class like this:
+
+```gdscript
+# visual.high_contrast is the umbrella; each outline class can override it.
+func outline_on(outline_class: String) -> bool:   # "enemies", "allies", "interactables", "hazards"
+	return A11y.resolve_toggle("visual.outline_" + outline_class, A11y.get_bool("visual.high_contrast"))
 ```
 
 ```gdscript
@@ -130,6 +151,17 @@ func alarm_started() -> void:   # looping sound: one caption, refreshed by merge
 Put one `A11yCaptionBus` and one `A11yCaptionView` in the HUD `CanvasLayer` (bus first). Use
 "Unknown voice" for speakers the player cannot identify yet.
 
+`A11yCaptionView` never clips text. It splits each line into pages of at most 2 lines that fit the
+current width and `subtitles.size`, and re-splits them (keeping the reading position) when the view,
+viewport or size changes. Pages turn by time: each page gets its share of `duration`, never less
+than its reading time (`reading_chars_per_second`, default 15) or `min_page_seconds`. A line that
+the scene can hold (`event.can_wait = true`, for example a dialogue box) waits for the player while
+`text.auto_advance` is off: call `view.advance_page()` from the continue action, and check
+`view.is_waiting()` before moving the conversation on. `entry_finished(event, fully_shown)` fires
+when an entry leaves. Turning `subtitles.dialogue` or `subtitles.sound_captions` off hides active
+entries of that kind at once. Direction is independent of speaker names: `Mara (left): ...`, or
+`(left) ...` with names off.
+
 ```gdscript
 # Enemy spawn with a content variant (scene tree):
 # Spider (CharacterBody3D, AI, hitbox, damage)   <- unchanged by the filter
@@ -143,7 +175,11 @@ add_child(spider)   # Looks swaps in _ready, before the first frame; live change
 ```
 
 `content.blood` and `content.gore` are separate keys: use one variant node per key. Name children by
-enum value (`full`, `reduced`, `off`). A missing level falls back to the more filtered one.
+enum value (`full`, `reduced`, `off`). A missing level uses the next MORE filtered variant, never a
+less filtered one. If nothing at or above the requested level exists, the presentation is hidden
+(or the explicitly authored `neutral_fallback` node is shown) and a warning lists the missing
+levels; the `coverage_missing` signal reports the same. Run `missing_levels()` on every variant
+node in a scene test and author the gaps before shipping.
 
 ```gdscript
 # Guidance decals: tag by channel in the scene or in code. Hazards get their own group.
@@ -163,14 +199,21 @@ method receive the intensity (0, 0.4, 1, 1.5) so a shader can thicken outlines w
 # Every flash goes through the one FlashGuard.
 func lightning() -> void:
 	var guard := A11yFlashGuard.find(self)
-	var strength := guard.request_flash(0.9, 1.0)   # intensity, screen fraction
-	if strength <= 0.0:
+	var flash := guard.request_flash_color(flash_color, 0.9, 1.0)   # colour, intensity, screen fraction
+	if flash.a <= 0.0:
 		return                                   # over 3 per 1 s or 9 per 5 s: skip it
-	var tint := A11yFlashGuard.desaturate_red(flash_color)
 	var fade := 0.6 if guard.is_reduced() else 0.08  # reduced: slow, low-contrast fade
-	flash_rect.color = Color(tint, strength)
+	flash_rect.color = flash                     # red already desaturated, alpha = allowed intensity
 	create_tween().tween_property(flash_rect, "color:a", 0.0, fade)
 ```
+
+Counting rule: a request counts toward the budgets when `area >= 0.25` OR `intensity >= 0.1` OR it
+is saturated red (`request_flash(intensity, area, at_time, saturated_red)`, or let
+`request_flash_color()` classify the colour). Only small, dim, non-red requests go uncounted. The
+thresholds (`area_threshold`, `intensity_threshold`) are conservative sample values: change them
+only with evidence from a photosensitivity analyser. The budgets are hard-capped at 3 per 1 s and
+9 per 5 s whatever the exports say; the exports can only lower them. Saturated red follows WCAG on
+linearised sRGB channels (`R / (R + G + B) >= 0.8`) and always goes through `desaturate_red()`.
 
 FlashGuard cannot see flashes baked into video or textures. Analyse captured footage (see
 [photosensitivity.md](../../references/topics/photosensitivity.md)); without an analyser the check
@@ -180,6 +223,14 @@ Colours: scripts ask `tokens.get_color("team.enemy")` and always show `tokens.ge
 The `custom` profile reads `visual.custom_colors` (`role=#RRGGBB;...`). Other keys a game reads
 directly: `hud.mode` / `store.get_list("hud.hidden_elements")`, `visual.background_dim`,
 `input.target_lock`, `A11yAssistPolicy.encounter_rate()`, `auto_battle()`, `battle_speed()`.
+
+- Aim: three separate floats, none bundled. `input.aim_assist` is slowdown only (slow the aim
+  while it is over a target), `input.aim_pull` pulls toward a nearby target, and
+  `input.aim_stabilization` smooths small unintended movement and reduces recoil and sway while
+  aiming. Read each where its effect is applied.
+- Scares: `content.jump_scares` is `full` or `reduced` (softer stings and camera snaps).
+  `content.scare_warnings` (bool) is separate: show and announce a consistent heads-up before a
+  scripted scare at either intensity.
 
 ## 5. First launch, title and pause
 
@@ -192,7 +243,8 @@ Boot order (architecture.md section 10):
    motion/flashing and presets). Keyboard, controller and TTS operable; skippable.
 3. Logos and intro respect the settings; music fades in after volume is reachable.
 4. Title: "Accessibility" always visible. Pause: Resume, Settings, Assists, Skip challenge (if
-   `A11yAssistPolicy.skip_offered()`), Restart checkpoint, Quit.
+   `A11yAssistPolicy.skip_offered()`), Restart checkpoint, Quit. Before a scene listed in the
+   content notices: Skip scene (if `A11yAssistPolicy.scene_skip_offered()`).
 
 ```gdscript
 func open_accessibility() -> void:   # same code on title and pause
@@ -202,8 +254,13 @@ func open_accessibility() -> void:   # same code on title and pause
 	menu.open()                       # focuses the first control and announces the title
 ```
 
-Skips: connect `A11y.skip_requested` to the challenge's normal success path (same rewards, flags,
-achievements and checkpoint). Achievement code never reads assist state.
+Skips: two separate requests, each gated on its own key, reaching the same completion signal.
+`A11yAssistPolicy.request_skip(challenge_id)` (puzzles, chases, bosses) follows
+`assist.skip_available`; `A11yAssistPolicy.request_scene_skip(scene_id)` (sensitive scenes; then
+show the scene's text summary) follows `content.scene_skip` only. Connect `A11y.skip_requested` to
+the normal success path (same rewards, flags, achievements and checkpoint). It fires once per id;
+repeated requests do nothing. Call `A11y.clear_skip(id)` when the player replays that challenge or
+scene. Achievement code never reads assist state.
 
 ## 6. Remapping with InputMap
 
@@ -228,8 +285,14 @@ achievements and checkpoint). Achievement code never reads assist state.
   assign it to `theme.default_font`. Ship only fonts whose licence allows it.
 - Godot 4.5+/Redot 26.1+: give icon-only controls `accessibility_name`; put the one-line effect in
   `accessibility_description`. `A11yNarrator.attach_to_tree(root)` fills empty names and narrates
-  focus ("Subtitles, switch, on"). When a screen reader is active it skips self-voicing focus so
-  nothing is spoken twice.
+  focus and value changes ("Subtitles, switch, on"). When a screen reader is active it skips
+  self-voicing of both, and checks again before speaking anything already queued, so nothing is
+  spoken twice.
+- The narrator has two independent channels. Menu speech (`speak()`, focus, values) follows
+  `narration.enabled`; unvoiced dialogue (`speak_dialogue()`, used by `A11yCaptionBus`) follows
+  `narration.dialogue`. Turning `narration.enabled` off stops current menu speech and discards
+  queued menu speech at once; dialogue reading carries on. A custom `backend` can add
+  `backend_is_speaking` and `backend_stop` so it queues and stops like OS TTS.
 
 ## 8. Export
 

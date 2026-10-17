@@ -114,7 +114,8 @@ the game. Run scripts as `python "<skill folder>/scripts/<name>.py" "<game folde
 | Web/JS, GameMaker, Ren'Py, Bevy, RPG Maker, Twine, LÖVE, Defold, Construct, Roblox, MonoGame, custom | [engines/other/GUIDE.md](engines/other/GUIDE.md) |
 
 Check the installed engine version before using any API. A newer engine's documentation is not
-proof that an API exists in the project's version.
+proof that an API exists in the project's version. When copying sample code into a project, keep
+the MIT notice: copy [LICENSE](LICENSE) next to the copied folder or into its third-party notices.
 
 ## Red flags: stop and correct course
 

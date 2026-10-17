@@ -92,6 +92,20 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Accessibility|Input")
 	float TimingWindow(float BaseSeconds) const;
 
+	// ---- Aim assistance (three independent keys) ----------------------------------------------
+
+	/** input.aim_assist (0..1): SLOWDOWN only. Reduce look sensitivity while the reticle is over a target. */
+	UFUNCTION(BlueprintPure, Category = "Accessibility|Input")
+	float GetAimSlowdownStrength() const;
+
+	/** input.aim_pull (0..1): gentle pull toward a nearby target. Independent of slowdown. */
+	UFUNCTION(BlueprintPure, Category = "Accessibility|Input")
+	float GetAimPullStrength() const;
+
+	/** input.aim_stabilization (0..1): smooth small unintended input and reduce recoil/sway while aiming. */
+	UFUNCTION(BlueprintPure, Category = "Accessibility|Input")
+	float GetAimStabilizationStrength() const;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Accessibility|Input", meta = (ClampMin = "3.0"))
 	float SlowQteScale = 3.f;
 
@@ -127,6 +141,7 @@ private:
 
 	bool IsToggleMode() const;
 	FString GetMode(FName Key, const TCHAR* Fallback) const;
+	float GetUnitFloat(FName Key) const;
 
 	TMap<FName, FHoldState> HoldStates;
 	TMap<FName, FMashState> Mashes;

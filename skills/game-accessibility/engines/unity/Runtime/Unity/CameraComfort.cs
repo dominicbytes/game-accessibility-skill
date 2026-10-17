@@ -1,9 +1,10 @@
-// Game Accessibility sample: the camera owner scales every shake, bob and screen effect here.
+// Game Accessibility sample: the camera owner scales every shake, bob, sway and screen effect here.
 // Contract: references/architecture.md section 8. Applies to gameplay AND cutscene/scripted shake.
 //
 // NOT COMPILED IN THIS REPOSITORY: no Unity Editor was available. See engines/unity/GUIDE.md.
 
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -14,8 +15,11 @@ namespace GameAccessibility.UnityBridge
 
     /// <summary>
     /// Put on the object that owns the camera transform (or a child "shake" pivot under it). Shake sources call
-    /// <see cref="AddTrauma"/>; bob code multiplies by <see cref="BobScale"/>. Post effects listen to the events and
-    /// set their own volume/override weights (render-pipeline specific).
+    /// <see cref="AddTrauma"/>; bob code multiplies by <see cref="BobScale"/>, held-item sway by
+    /// <see cref="WeaponSwayScale"/>. Automatic and decorative motion asks <see cref="IsMotionEffectEnabled"/>.
+    /// Post effects listen to the events and set their own volume/override weights (render-pipeline specific).
+    /// The shake scale is applied at final output, so lowering motion.camera_shake during a shake takes effect at
+    /// once, and Off clears the shake (see <see cref="CameraShakeCore"/>).
     /// </summary>
     public sealed class CameraComfort : MonoBehaviour
     {
@@ -44,20 +48,36 @@ namespace GameAccessibility.UnityBridge
         [Tooltip("Invoked with whether depth of field may be enabled (motion.depth_of_field).")]
         public BoolEvent onDepthOfFieldEnabled = new BoolEvent();
 
-        [Tooltip("Invoked with motion.reduce_motion. Disable camera swings, zoom pulses, parallax, speed lines.")]
+        [Tooltip("Invoked with motion.reduce_motion (the umbrella). Prefer onMotionEffectsChanged with IsMotionEffectEnabled.")]
         public BoolEvent onReduceMotion = new BoolEvent();
 
+        [Tooltip("Invoked when motion.reduce_motion or a per-effect override (auto camera, FOV effects, speed lines, " +
+                 "parallax, menu animation) changes. Re-read IsMotionEffectEnabled for each effect you own.")]
+        public UnityEvent onMotionEffectsChanged = new UnityEvent();
+
         private A11ySettingsStore _store;
+        private CameraShakeCore _shake;
         private IDisposable[] _subs = Array.Empty<IDisposable>();
-        private float _trauma;
         private float _seed;
 
-        /// <summary>motion.camera_shake (0..1). Multiply EVERY shake source by this, including cutscenes.</summary>
-        public float ShakeScale => _store?.GetOr("motion.camera_shake", 1f) ?? 1f;
-        /// <summary>motion.head_bob (0..1). Multiply walk/run bob amplitude by this.</summary>
+        /// <summary>
+        /// motion.camera_shake (0..1). AddTrauma and the pivot apply it already. Multiply shake you compute yourself
+        /// (Cinemachine impulses, Timeline) by this every frame, including cutscenes.
+        /// </summary>
+        public float ShakeScale => _shake?.Scale ?? (_store?.GetOr("motion.camera_shake", 1f) ?? 1f);
+        /// <summary>motion.head_bob (0..1). Multiply walk/run camera bob amplitude by this.</summary>
         public float BobScale => _store?.GetOr("motion.head_bob", 1f) ?? 1f;
+        /// <summary>motion.weapon_sway (0..1), separate from head bob. Multiply held-item sway and breathing by this. Visual only: never change accuracy.</summary>
+        public float WeaponSwayScale => _store?.GetOr("motion.weapon_sway", 1f) ?? 1f;
         public float ScreenEffectsScale => _store?.GetOr("motion.screen_effects", 1f) ?? 1f;
         public bool ReduceMotion => _store?.GetOr("motion.reduce_motion", false) ?? false;
+
+        /// <summary>
+        /// Whether an automatic or decorative motion effect may play: its own override ("on"/"off") or, on "follow",
+        /// !motion.reduce_motion. Without a store the authored effect plays.
+        /// </summary>
+        public bool IsMotionEffectEnabled(MotionEffect effect) =>
+            _store == null || PresentationRules.MotionEffectEnabled(_store, effect);
 
         private void Awake() => _seed = UnityEngine.Random.value * 100f;
 
@@ -66,62 +86,76 @@ namespace GameAccessibility.UnityBridge
             var boot = A11yBootstrap.Resolve(bootstrap);
             _store = boot != null ? boot.Store : null;
             if (_store == null) return;
+            _shake = new CameraShakeCore(_store) { DecayPerSecond = traumaDecayPerSecond };
             // Observe = read the current value now, then follow changes (late spawns are covered).
-            _subs = new[]
+            var subs = new List<IDisposable>
             {
                 _store.Observe("motion.fov", v => ApplyFov(Convert.ToSingle(v))),
                 _store.Observe("motion.screen_effects", v => onScreenEffectsScale.Invoke(Convert.ToSingle(v))),
                 _store.Observe("motion.motion_blur", v => onMotionBlurEnabled.Invoke((bool)v)),
                 _store.Observe("motion.chromatic_aberration", v => onChromaticAberrationEnabled.Invoke((bool)v)),
                 _store.Observe("motion.depth_of_field", v => onDepthOfFieldEnabled.Invoke((bool)v)),
-                _store.Observe("motion.reduce_motion", v => onReduceMotion.Invoke((bool)v)),
+                _store.Observe("motion.reduce_motion", v => { onReduceMotion.Invoke((bool)v); onMotionEffectsChanged.Invoke(); }),
             };
+            foreach (MotionEffect e in (MotionEffect[])Enum.GetValues(typeof(MotionEffect)))
+                subs.Add(_store.Observe(PresentationRules.MotionKey(e), _ => onMotionEffectsChanged.Invoke()));
+            _subs = subs.ToArray();
         }
 
         private void OnDisable()
         {
             foreach (var s in _subs) s.Dispose();
             _subs = Array.Empty<IDisposable>();
-            if (shakePivot != null) shakePivot.localPosition = Vector3.zero;
+            _shake?.Dispose();
+            _shake = null; // trauma is discarded: re-enabling never resumes an old shake
+            ResetPivot();
+        }
+
+        private void ResetPivot()
+        {
+            if (shakePivot == null) return;
+            shakePivot.localPosition = Vector3.zero;
+            shakePivot.localRotation = Quaternion.identity;
         }
 
         private void ApplyFov(float verticalDegrees)
         {
             // Camera.fieldOfView is vertical by default. If your rig zooms (aim, sprint), apply zoom as a
-            // multiplier on top of this base value instead of overwriting it.
+            // multiplier on top of this base value instead of overwriting it; skip that zoom when
+            // IsMotionEffectEnabled(MotionEffect.FovEffects) is false.
             if (fovCamera != null && !fovCamera.orthographic) fovCamera.fieldOfView = verticalDegrees;
         }
 
-        /// <summary>Adds shake. <paramref name="amount"/> 0..1 as authored; the player's scale is applied here.</summary>
-        public void AddTrauma(float amount)
-        {
-            float scaled = Mathf.Clamp01(amount) * ShakeScale;
-            if (scaled <= 0f) return; // 0% removes shake completely
-            _trauma = Mathf.Clamp01(_trauma + scaled);
-        }
+        /// <summary>
+        /// Adds shake. <paramref name="amount"/> 0..1 as authored. The player's scale is applied at output every
+        /// frame; while motion.camera_shake is 0 the request is ignored.
+        /// </summary>
+        public void AddTrauma(float amount) => _shake?.AddTrauma(amount);
 
-        /// <summary>For code that computes its own offset (procedural animation, Cinemachine impulses): scale it here.</summary>
+        /// <summary>For code that computes its own offset (procedural animation, Cinemachine impulses): scale it here every frame.</summary>
         public Vector3 ScaleShakeOffset(Vector3 authoredOffset) => authoredOffset * ShakeScale;
 
         private void LateUpdate()
         {
-            if (shakePivot == null) return;
-            if (_trauma <= 0f)
+            if (_shake == null) return;
+            _shake.DecayPerSecond = traumaDecayPerSecond;
+            // Current scale x squared trauma (a gentle tail), read every frame: Off mid-shake rests the camera now.
+            float k = _shake.Amplitude;
+            if (shakePivot == null || k <= 0f)
             {
-                shakePivot.localPosition = Vector3.zero;
-                shakePivot.localRotation = Quaternion.identity;
+                ResetPivot();
+                _shake.Tick(Time.unscaledDeltaTime);
                 return;
             }
-            // Unscaled time: shake reads the same at any game speed. Squared trauma gives a gentle tail.
+            // Unscaled time: shake reads the same at any game speed.
             float t = Time.unscaledTime * shakeFrequency;
-            float k = _trauma * _trauma;
             shakePivot.localPosition = new Vector3(
                 (Mathf.PerlinNoise(_seed, t) * 2f - 1f) * maxShakeOffset * k,
                 (Mathf.PerlinNoise(_seed + 1f, t) * 2f - 1f) * maxShakeOffset * k,
                 0f);
             shakePivot.localRotation = Quaternion.Euler(0f, 0f,
                 (Mathf.PerlinNoise(_seed + 2f, t) * 2f - 1f) * maxShakeRollDegrees * k);
-            _trauma = Mathf.Max(0f, _trauma - traumaDecayPerSecond * Time.unscaledDeltaTime);
+            _shake.Tick(Time.unscaledDeltaTime);
         }
     }
 }

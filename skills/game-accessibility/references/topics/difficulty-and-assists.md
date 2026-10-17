@@ -48,7 +48,8 @@ policy.damage_to_player(amount, source)  # source: enemy | hazard | fall | self 
 policy.should_fail(reason)               # reason: fall | drowned | timer | detected | caught | ...
 policy.consume(resource, amount)         # infinite -> true and nothing is spent
 policy.enemy_aggression()                # attack frequency and detection speed multiplier
-policy.request_skip(challenge_id)        # completes through the normal success path
+policy.request_skip(challenge_id)        # gated on assist.skip_available; normal success path
+policy.request_scene_skip(scene_id)      # sensitive scenes; gated on content.scene_skip only
 ```
 
 Gameplay never reads raw settings. Changing an assist mid-encounter applies at the next safe step
@@ -92,6 +93,9 @@ and never needs a restart ([architecture](../architecture.md) section 2).
 
 ### Skips (D22, D23)
 
+- `request_skip` is for challenges. Sensitive-scene skips use `request_scene_skip`, gated on
+  `content.scene_skip` and never on `assist.skip_available`
+  ([content-and-phobias](content-and-phobias.md)); both reach the same completion path.
 - `request_skip` grants the same items, flags, achievements, checkpoints and next-scene state as
   winning. It is idempotent: a skip and a success in the same frame cannot double rewards.
 - Restore camera, input, AI, collision, music and objective state. Save and reload right after.

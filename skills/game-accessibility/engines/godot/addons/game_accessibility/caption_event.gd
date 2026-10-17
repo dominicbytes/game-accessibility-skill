@@ -28,6 +28,10 @@ enum Importance { LOW, NORMAL, CRITICAL }
 @export var merge_key: String = ""
 ## False for unvoiced lines: narration.dialogue reads them aloud.
 @export var voiced: bool = true
+## True when the scene can hold this line until the player continues (dialogue boxes, paused
+## conversations). With text.auto_advance off, [A11yCaptionView] then turns its pages only on
+## [method A11yCaptionView.advance_page] instead of by time.
+@export var can_wait: bool = false
 
 
 ## Convenience constructor for a dialogue line.

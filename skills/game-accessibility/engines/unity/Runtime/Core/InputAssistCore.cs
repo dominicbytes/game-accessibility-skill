@@ -108,6 +108,17 @@ namespace GameAccessibility
         /// <summary>input.target_lock: aim stays on the selected target until the player switches or releases it.</summary>
         public bool TargetLock => _store.GetOr("input.target_lock", false);
 
+        /// <summary>input.aim_assist (0..1): slowdown only. Scale aim sensitivity over a target by (1 - AimSlowdown x maxSlow).</summary>
+        public float AimSlowdown => Clamp01(_store.GetOr("input.aim_assist", 0f));
+
+        /// <summary>input.aim_pull (0..1): strength of the gentle pull toward a nearby target. Independent of slowdown.</summary>
+        public float AimPull => Clamp01(_store.GetOr("input.aim_pull", 0f));
+
+        /// <summary>input.aim_stabilization (0..1): smoothing of small unintended movement, and recoil/sway reduction while aiming.</summary>
+        public float AimStabilization => Clamp01(_store.GetOr("input.aim_stabilization", 0f));
+
+        private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
+
         /// <summary>Starts a repeated-press challenge in the player's current mash mode.</summary>
         /// <param name="requiredPresses">Presses needed in mash mode.</param>
         /// <param name="holdSecondsToFill">Seconds of holding that fill progress in hold mode (author it to feel fair).</param>

@@ -32,7 +32,7 @@ cutscene routes to [camera-and-motion](camera-and-motion.md) instead. Record the
 | O06 | Camera view and distance: cockpit, hood, chase | none yet | Designer value | C | O, V |
 | O01 | Camera shake from speed, impacts and engines | `motion.camera_shake` | 0.5 (Reduced) | C | O, N |
 | O04 | Motion blur | `motion.motion_blur` | true | C | O, V |
-| O13 / O14 | Speed FOV kick, speed lines, radial blur | `motion.reduce_motion` | false | C | O, N |
+| O13 / O14 | Speed FOV kick, speed lines, radial blur | `motion.fov_effects`, `motion.speed_lines` (umbrella `motion.reduce_motion`) | `follow` | C | O, N |
 | O05 | Field of view | `motion.fov` | 75 | C | O, V |
 | R15 | Distinct audio cues for turns, edges, braking points, opponents | none yet | Off | C (A for full nonvisual driving) | V |
 | R16 | Spoken turn-by-turn or bearing callouts | none yet | Off | A | V, C |
@@ -97,8 +97,9 @@ result. In ranked or shared races, rewind and assists need explicit session rule
 - **Horizon lock:** the camera follows vehicle position and heading but keeps world-up. Offer it
   for cockpit and chase views. Banking still shows through the vehicle model and HUD attitude
   indicator.
-- Speed effects (FOV kick, speed lines, radial blur) obey `motion.reduce_motion` and
-  `motion.motion_blur`. Keep speed readable through a steady speedometer, engine pitch and captions.
+- Speed effects obey their own keys: FOV kick follows `motion.fov_effects`, speed lines and radial
+  blur follow `motion.speed_lines` (both default to the `motion.reduce_motion` umbrella), and blur
+  follows `motion.motion_blur`. Keep speed readable through a steady speedometer, engine pitch and captions.
 - View choice: cockpit, hood and chase cameras, with camera distance. A view mode that does not
   exist yet is an Advanced scope decision, not a silent promise.
 

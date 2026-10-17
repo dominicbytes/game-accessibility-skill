@@ -7,10 +7,18 @@
 ## Hitboxes, AI, damage and rewards live outside this node and are never touched.
 ##
 ## The swap happens in _ready (before the first frame is drawn) and synchronously when the setting
-## changes, so no frame of the original is shown. A missing variant falls back to the nearest more
-## filtered one.
+## changes, so no frame of the original is shown. A missing variant falls back to the nearest MORE
+## filtered one, never to a less filtered one. When no variant at or above the requested level
+## exists, the presentation is hidden (or [member neutral_fallback] is shown, if authored) and a
+## warning lists the missing levels; author those variants before shipping. [method missing_levels]
+## reports gaps for a validation pass.
 class_name A11yContentVariant
 extends Node
+
+## Emitted when no variant at or above [param requested] exists. [param missing] lists the
+## unauthored levels from the requested one upward; [param used_fallback] is true when
+## [member neutral_fallback] is shown, false when the presentation is hidden.
+signal coverage_missing(setting_id: String, requested: String, missing: PackedStringArray, used_fallback: bool)
 
 ## Setting that selects the level (int or enum key).
 @export var setting_id: String = "content.spiders"
@@ -18,8 +26,14 @@ extends Node
 @export var tag: String = "arachnid"
 ## Optional explicit variants by level index. Empty: children named by level value.
 @export var variants: Array[NodePath] = []
+## Optional explicitly authored neutral presentation (for example a crate or a silhouette that does
+## not show the filtered content), used only when no variant at or above the requested level exists.
+## Empty: the presentation stays hidden instead.
+@export var neutral_fallback: NodePath = NodePath()
 ## Store override; null uses [method A11ySettings.active].
 var settings: A11ySettings = null
+## Print a warning when coverage is missing. Tests switch this off and use [signal coverage_missing].
+var warn_on_missing: bool = true
 
 var _current: Node = null
 var _connected_store: A11ySettings = null
@@ -81,15 +95,38 @@ func apply() -> void:
 		if nodes[i] != null:
 			target = nodes[i]
 			break
-	if target == null:
-		for i: int in range(mini(wanted, nodes.size() - 1), -1, -1):
-			if nodes[i] != null:
-				target = nodes[i]
-				break
+	var fallback: Node = get_node_or_null(neutral_fallback) if not neutral_fallback.is_empty() else null
+	if target == null and not names.is_empty():
+		target = fallback
+		_report_missing(names, nodes, wanted, fallback != null)
 	for node: Node in nodes:
 		if node != null:
 			_set_active(node, node == target)
+	if fallback != null and not nodes.has(fallback):
+		_set_active(fallback, fallback == target)
 	_current = target
+
+
+## Levels (by name) that have no variant node. Use it in a validation pass or a scene test.
+func missing_levels() -> PackedStringArray:
+	var names: PackedStringArray = level_names()
+	var missing: PackedStringArray = PackedStringArray()
+	for i: int in names.size():
+		if _variant_at(i, names[i]) == null:
+			missing.append(names[i])
+	return missing
+
+
+func _report_missing(names: PackedStringArray, nodes: Array[Node], wanted: int, used_fallback: bool) -> void:
+	var missing: PackedStringArray = PackedStringArray()
+	for i: int in range(wanted, names.size()):
+		if nodes[i] == null:
+			missing.append(names[i])
+	if warn_on_missing:
+		push_warning("A11yContentVariant '%s': no variant at or above %s=%s (missing levels: %s); %s." % [
+			str(get_path()) if is_inside_tree() else String(name), setting_id, names[wanted],
+			", ".join(missing), "showing the neutral fallback" if used_fallback else "presentation hidden"])
+	coverage_missing.emit(setting_id, names[wanted], missing, used_fallback)
 
 
 func _variant_at(index: int, level_name: String) -> Node:

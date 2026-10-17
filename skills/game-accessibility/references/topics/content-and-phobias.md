@@ -21,9 +21,9 @@ are not evidence: a character called "Spider" may not look like one.
 | F10 | Needle and medical imagery replacement | none yet | Off | C | F, T |
 | F06 | Blood amount | `content.blood` | full | C | F, N |
 | F07 | Gore and dismemberment | `content.gore` | full | C | F, T |
-| F11 | Jump-scare reduction | `content.jump_scares` | full | C | F, T, N |
+| F11 | Jump-scare reduction | `content.jump_scares` (full / reduced) | full | C | F, T, N |
 | F12 | Layered content notices | `content.warnings` (notices only) | On | C | F, T |
-| F13 | Pre-scene warnings, early enough to act | `content.warnings`, `content.jump_scares` = warned | On | C | F, T |
+| F13 | Pre-scene warnings, early enough to act | `content.warnings` (scene notices), `content.scare_warnings` (heads-up before scripted scares) | On / Off | C | F, T |
 | F14 | Sensitive scene skip with factual recap | `content.scene_skip` | On (offered) | C | F, T |
 | F08 | Nudity filter | none yet | Off | C | F, S |
 | F09 | Profanity filter | none yet | Off | C | F, S |
@@ -111,10 +111,13 @@ and skitter sounds at the levels that promise it. Reuse the same graded pattern 
 - **Clustered holes (S117):** check walls, floors, nests and procedural textures, not only enemies.
   Provide alternate textures, normal maps or plain surfaces. A detour route does not answer a request
   to make an area viewable.
-- **Jump scares (S118):** `content.jump_scares` = full, reduced or warned. Reduced softens the
-  sting, the camera snap and sudden spawns. Warned adds a short, consistent heads-up. This is
-  independent of enemy lethality: an invincible player can still be startled, and a scare-reduced
-  game can still be lethal. Any flash in a scare still goes through FlashGuard.
+- **Jump scares (S118):** two independent keys. `content.jump_scares` = full or reduced sets the
+  scare's intensity: reduced softens the sting, the camera snap and sudden spawns.
+  `content.scare_warnings` (on/off) adds a short, consistent, shown-and-announced heads-up before
+  each scripted scare. Any combination works: a player can keep authored full-strength scares and
+  still get the warning, or reduce scares without warnings. Both are independent of enemy
+  lethality: an invincible player can still be startled, and a scare-reduced game can still be
+  lethal. Any flash in a scare still goes through FlashGuard.
 
 ### 6. Warnings, previews and skips (F12-F14, S119-S121)
 
@@ -129,9 +132,13 @@ and skitter sounds at the levels that promise it. Reuse the same graded pattern 
 - **Previews start most-filtered.** The settings screen shows the most abstract variant first and a
   muted sample. The original appears only after an explicit "Show original" action. Never autoplay a
   trigger to demonstrate its removal.
-- **Skip** calls `AssistPolicy.request_skip(scene_id)`. It runs the normal completion path: same
-  flags, items, checkpoint and achievements, and an optional factual text recap. Saving and
-  reloading right after the skip must work.
+- **Skip** calls `AssistPolicy.request_scene_skip(scene_id)` (`RequestSceneSkip` in Unity and
+  Unreal), which is gated on `content.scene_skip` only. It is not `request_skip(challenge_id)`:
+  that one is for challenges and is gated on `assist.skip_available`, so a player who turns
+  challenge skips off keeps sensitive-scene skips, and a story game whose registry has only
+  `content.scene_skip` still works. Both requests share the normal completion path: same flags,
+  items, checkpoint and achievements, and an optional factual text recap. Saving and reloading
+  right after the skip must work. See [architecture](../architecture.md) section 2.
 - **Concealment is not silence.** If a scene is hidden behind a card or blur, either mute or
   replace its audio too, or say clearly that audio continues.
 
@@ -215,10 +222,14 @@ use ContentFilter clothing variants. Scene meaning and progression stay the same
 - [ ] A scene skip grants the same flags, items, checkpoint and achievement events as finishing the
       scene. Save and reload straight after it.
 - [ ] Warnings off + scene skip on, and warnings on + scene skip off: each behaves as described.
+- [ ] `content.scene_skip` × `assist.skip_available`, all four combinations: a sensitive-scene skip
+      is accepted exactly when `content.scene_skip` is on, a challenge skip exactly when
+      `assist.skip_available` is on. Repeat with a registry that contains only `content.scene_skip`.
 - [ ] Blood off + gore full, and blood full + gore off: each category changes alone, including
       corpses, cinematics and inventory art.
-- [ ] Jump scares: reduced and warned work with enemy damage both on and off, and FlashGuard still
-      limits any flash.
+- [ ] Jump scares: all four combinations of `content.jump_scares` (full, reduced) and
+      `content.scare_warnings` (off, on) behave as described, including full scares with warnings,
+      with enemy damage both on and off. FlashGuard still limits any flash.
 - [ ] Filter settings persist across restart, load an old save without reverting, and do not appear
       on save cards or endings.
 - [ ] Mod or user content: untagged content is disclosed as unfiltered in the option description.
@@ -239,6 +250,10 @@ use ContentFilter clothing variants. Scene meaning and progression stay the same
   imagery. Offer visibility relief or a skip, and name each.
 - Tying jump-scare reduction to difficulty or enemy damage → keep `content.jump_scares` separate from
   AssistPolicy.
+- Giving the scare warning only to players who also reduce scares → `content.scare_warnings` is its
+  own key.
+- Routing sensitive-scene skips through the challenge skip → use `request_scene_skip`, gated on
+  `content.scene_skip`.
 - Making the filter change hitboxes or remove enemies silently → presentation only; removal is a
   separate, described setting.
 - Concealing a gore scene behind a black card while its audio plays → mute or replace the audio, or

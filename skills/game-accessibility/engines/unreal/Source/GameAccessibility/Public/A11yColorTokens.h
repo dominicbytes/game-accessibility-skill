@@ -7,6 +7,8 @@
 // "custom" reads the player's own colours from visual.custom_colors ("role=#RRGGBB;..."), where role is
 // the token name; tokens the player did not set fall back to ProfileColors["custom"], then Default.
 // The engine's full-window colour-vision correction is an OPTIONAL EXTRA, never the main solution.
+// Per-class outlines (visual.outline_enemies/allies/interactables/hazards) resolve through ShouldOutline:
+// each class key is "follow" by default, which uses the visual.high_contrast umbrella.
 
 #pragma once
 
@@ -69,6 +71,15 @@ public:
 	/** Token colour for the player's current visual.color_profile. Magenta if the token is missing. */
 	UFUNCTION(BlueprintPure, Category = "Accessibility|Color", meta = (WorldContext = "WorldContextObject"))
 	static FLinearColor ResolveTokenColor(const UObject* WorldContextObject, const UA11yColorTokens* Palette, FName Token);
+
+	/**
+	 * Outline for one class: OutlineKey is visual.outline_enemies, visual.outline_allies,
+	 * visual.outline_interactables or visual.outline_hazards. "on"/"off" win; "follow" or an unregistered key
+	 * uses the visual.high_contrast umbrella. Drive SetRenderCustomDepth (or your outline material) with it,
+	 * and refresh when OnSettingChanged reports the class key or visual.high_contrast.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Accessibility|Color", meta = (WorldContext = "WorldContextObject"))
+	static bool ShouldOutline(const UObject* WorldContextObject, FName OutlineKey);
 
 	/**
 	 * OPTIONAL full-window correction through UWidgetBlueprintLibrary::SetColorVisionDeficiencyType.

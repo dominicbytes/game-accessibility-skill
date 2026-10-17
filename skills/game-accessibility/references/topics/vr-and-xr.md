@@ -22,7 +22,7 @@ XR, S143 spatial captions or menus. XR is a platform, not a genre: every underly
 | O19 | Snap or smooth turning; turn angle and speed | none yet | Choice offered before first turn | C | O |
 | O20 | Comfort vignette strength, including Off | none yet | Designer value | C | O |
 | O12 | Fixed horizon; reduced roll in forced movement | none yet | Off | C | O |
-| O09 | Manual recenter always available; auto-recenter optional | `motion.reduce_motion` stops auto-recenter; manual recenter is an action | Manual on | C | O, M |
+| O09 | Manual recenter always available; auto-recenter optional | `motion.auto_camera` (umbrella `motion.reduce_motion`) stops auto-recenter; manual recenter is an action | Manual on | C | O, M |
 | H30 | Caption anchoring: head-locked or world-locked, distance | none yet | Designer value | C | H, V, O |
 | H24 | Caption size in the headset | `subtitles.size` | 1.0 | B | V, H |
 | H21 | Direction indicator for speakers outside the view | `subtitles.direction` | false | C | H |

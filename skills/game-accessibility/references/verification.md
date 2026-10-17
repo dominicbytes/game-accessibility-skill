@@ -73,11 +73,11 @@ Aim for the highest level the environment allows. Name the level you reached.
 | Timing (S013, S036) | A boundary input that fails at 1.0× succeeds at the configured scale. |
 | Game speed (S013, S039) | At 0.5×, physics, animation, projectiles and AI stay in sync. Subtitles and menus run at normal speed. |
 | Timers (S097, S075) | `extended` doubles non-race countdowns. `off` removes them. Hidden script timers obey too. |
-| Skips (S086, S045, S048) | Skip from pause: same rewards, flags, achievement events and next-scene state as success. Save and reload immediately afterwards and the state is coherent. |
+| Skips (S086, S045, S048, S118, S119) | Skip from pause: same rewards, flags, achievement events and next-scene state as success. Save and reload immediately afterwards and the state is coherent. Challenge skips (`request_skip`) follow `assist.skip_available` only; sensitive-scene skips (`request_scene_skip`) follow `content.scene_skip` only. Check all four combinations. |
 | Speech (S066, S067) | Every voiced line, including barks, radio and cutscenes, has a subtitle with a speaker name, at most 2 lines. Size and background settings apply. |
 | Sound cues (S006, S068) | Sound captions and the visualiser fire with audio muted and show direction. Repeated loops merge. |
-| Camera (S051, S052, S057) | Shake 0 means none from any source, including cutscenes. Bob 0 means none. Effects 0 removes vignette, aberration and overlays. FOV applies. |
-| Flashing (S058) | Spam the flashiest action for 6+ seconds. At most 3 large or bright flashes in any second and 9 in any 5 seconds. `reduce_flashing` makes them steady. Captured footage analysed. |
+| Camera (S051, S052, S057) | Shake 0 means none from any source, including cutscenes. Bob 0 means none. Weapon sway 0 means none, and aim accuracy does not change. Effects 0 removes vignette, aberration and overlays. FOV applies. |
+| Flashing (S058) | Spam the flashiest action for 6+ seconds. At most 3 counted flashes in any second and 9 in any 5 seconds; a request counts if it covers ≥ 25% of the screen, changes luminance by ≥ 0.1, is saturated red, or has unknown area. Small, moderately bright repeated flashes are capped too. `reduce_flashing` makes them steady. Captured footage analysed. |
 | Guidance (S061) | `off` hides paint, trails and highlights but never hazard cues. `on_request` reveals on demand. `boosted` is clearly stronger. |
 | HUD (S062) | `minimal` keeps the chosen essentials, and pause and settings stay reachable. |
 | Content filter (S109–S118) | Level 0 is the original (the control). Each higher level shows exactly the substitutions its description promises, on every channel it names (model, animation, sound, icon, corpse, portrait), before and after swap, death, reload and cutscene. A level that promises full replacement shows no original asset. The preview starts at the most filtered level. |
@@ -97,6 +97,11 @@ Aim for the highest level the environment allows. Name the level you reached.
 - Infinite stamina + toggle sprint + traversal assist.
 - Max text + max subtitles + longest remapped prompt at minimum resolution.
 - Reduce motion + high contrast + reduce flashing (contrast mode creates no new strobing).
+- Umbrella overrides: `motion.reduce_motion` on with one per-effect key `on`, and off with one key
+  `off`; `visual.high_contrast` on with one outline class `off`, and off with one class `on`. Only
+  the overridden part differs, and it keeps its value when the umbrella is toggled again.
+- Full jump scares + scare warnings on: the warning appears and the scare is unchanged.
+- Aim pull on + slowdown 0 + lock-on off: pull works alone.
 - Content filter level 3 + newly spawned enemies + replayed cutscene.
 
 ## 4. Automating in the engine

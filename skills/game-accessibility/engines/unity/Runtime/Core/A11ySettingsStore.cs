@@ -158,6 +158,24 @@ namespace GameAccessibility
 
         public bool IsExplicit(string id) => _explicit.Contains(id);
 
+        /// <summary>
+        /// Resolves a per-effect override key with values "follow", "off" and "on" (for example visual.outline_enemies
+        /// or motion.parallax). "on" returns true and "off" returns false. "follow", any other value, or a key the game
+        /// did not register returns <paramref name="followValue"/>: the umbrella setting the override patches.
+        /// A bool key returns its own value.
+        /// </summary>
+        public bool ResolveToggle(string key, bool followValue)
+        {
+            if (key == null || !_values.TryGetValue(key, out object v)) return followValue;
+            if (v is bool b) return b;
+            if (v is string s)
+            {
+                if (string.Equals(s, "on", StringComparison.Ordinal)) return true;
+                if (string.Equals(s, "off", StringComparison.Ordinal)) return false;
+            }
+            return followValue;
+        }
+
         private static T ConvertTo<T>(object v)
         {
             if (v is T t) return t;
@@ -335,10 +353,12 @@ namespace GameAccessibility
                         : (object)null;
                 case "reduce_motion":
                     if (!(osValue is bool reduce) || !reduce) return null;
-                    if (def.Type == SettingType.Float) return def.Min ?? 0.0;    // shake, bob: off
-                    // Bools flip away from their default: effects that default on (motion blur, chromatic
-                    // aberration, depth of field) turn off; reductions that default off turn on.
+                    if (def.Type == SettingType.Float) return def.Min ?? 0.0;    // shake, bob, weapon sway: off
+                    // Bools flip away from their default: effects that default on (motion blur) turn off;
+                    // reductions that default off (reduce_motion, reduce_flashing) turn on.
                     if (def.Type == SettingType.Bool && def.Default is bool d) return !d;
+                    // "follow"/"off"/"on" overrides (motion.parallax, motion.auto_camera...) carry no platform_pref:
+                    // they keep "follow" and so follow motion.reduce_motion, which this preference sets.
                     return null;
                 default:
                     // screen_reader_active, increase_contrast, captions_enabled, mono_audio

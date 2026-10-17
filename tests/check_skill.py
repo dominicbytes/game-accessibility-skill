@@ -9,7 +9,10 @@ Checks:
      real keys with legal values; engine copies of the registry are identical.
   5. Option IDs used in references exist in option-catalog.md; signal IDs are S001-S157;
      backticked setting keys that look like registry keys exist in the registry.
-  6. Policy guard: no sample code writes an assist flag into saves or reads assist state in
+  6. Tier consistency: Advanced labels in signal-routing.md and topic option tables match
+     option-catalog.md (no silent scope cuts to A, no catalogue-A option listed as B/C).
+  7. The skill folder's LICENSE matches the repository LICENSE.
+  8. Policy guard: no sample code writes an assist flag into saves or reads assist state in
      achievement code (heuristic grep).
 Exit code 1 on any failure.
 """
@@ -160,6 +163,81 @@ def check_ids(registry: dict) -> None:
     print(f"catalog option ids: {len(known)}")
 
 
+TIER_ID = r"[VHMCNPOFDKLR]\d{2}"
+
+
+def _expand_ids(segment: str) -> list[str]:
+    out = []
+    for m in re.finditer(rf"({TIER_ID})\s*[–-]\s*({TIER_ID})|({TIER_ID})", segment):
+        if m.group(3):
+            out.append(m.group(3))
+        elif m.group(1)[0] == m.group(2)[0]:
+            for n in range(int(m.group(1)[1:]), int(m.group(2)[1:]) + 1):
+                out.append(f"{m.group(1)[0]}{n:02d}")
+    return out
+
+
+def check_tiers() -> None:
+    """Advanced (A) is a scope-decision tier. The router may label an option A only when the
+    catalogue does, and must not list a catalogue-Advanced option as B or C. Topic option tables
+    must repeat the catalogue tier exactly."""
+    refs = os.path.join(SKILL, "references")
+    catalog = read(os.path.join(refs, "option-catalog.md"))
+    tiers = {m.group(1): m.group(2).strip()[:1]
+             for m in re.finditer(rf"^\|\s*({TIER_ID})\s*\|[^|]*\|\s*([^|]*?)\s*\|", catalog, re.M)}
+    checked = 0
+    router = read(os.path.join(refs, "signal-routing.md"))
+    for line in router.splitlines():
+        m = re.match(r"^\|\s*(S\d{3})[^|]*\|[^|]*\|([^|]*)\|", line)
+        if not m:
+            continue
+        sig, opts = m.group(1), re.sub(r"\([^)]*\)", "", m.group(2))
+        for part in opts.split(";"):
+            pm = re.match(r"\s*([BCA]):(.*)", part)
+            if not pm:
+                continue
+            tier, ids = pm.group(1), pm.group(2).split(". ")[0]
+            for oid in _expand_ids(ids):
+                cat_tier = tiers.get(oid)
+                if cat_tier is None:
+                    continue
+                checked += 1
+                if (tier == "A") != (cat_tier == "A"):
+                    fail(f"signal-routing.md {sig}: {oid} listed as {tier}, catalogue tier is {cat_tier}")
+    topics = os.path.join(refs, "topics")
+    for fn in sorted(os.listdir(topics)):
+        if not fn.endswith(".md"):
+            continue
+        tier_col = None
+        for line in read(os.path.join(topics, fn)).splitlines():
+            cols = [c.strip() for c in line.strip().strip("|").split("|")]
+            if line.startswith("| ID |"):
+                tier_col = cols.index("Tier") if "Tier" in cols else None
+                continue
+            if not line.startswith("|"):
+                tier_col = None
+                continue
+            if tier_col is None or len(cols) <= tier_col:
+                continue
+            for oid in re.findall(TIER_ID, cols[0]):
+                cat_tier = tiers.get(oid)
+                if cat_tier is None:
+                    continue
+                checked += 1
+                if cols[tier_col][:1] != cat_tier:
+                    fail(f"topics/{fn}: {oid} tier {cols[tier_col]!r}, catalogue tier is {cat_tier}")
+    print(f"tier labels checked: {checked}")
+
+
+def check_license() -> None:
+    """The installable folder must carry the same MIT notice as the repository."""
+    inner = os.path.join(SKILL, "LICENSE")
+    if not os.path.exists(inner):
+        fail("skills/game-accessibility/LICENSE is missing")
+    elif read(inner) != read(os.path.join(ROOT, "LICENSE")):
+        fail("skills/game-accessibility/LICENSE differs from the repository LICENSE")
+
+
 def check_policy_guard() -> None:
     bad = re.compile(r"(achiev|trophy|unlock).{0,80}(assist|a11y_settings|difficulty)|save.{0,40}(assisted|used_assist|ever_assist)", re.I)
     for dp, _, fns in os.walk(os.path.join(SKILL, "engines")):
@@ -176,6 +254,8 @@ def main() -> int:
     check_links()
     reg = load_registry()
     check_ids(reg)
+    check_tiers()
+    check_license()
     check_policy_guard()
     for w in WARNS:
         print("WARN", w)

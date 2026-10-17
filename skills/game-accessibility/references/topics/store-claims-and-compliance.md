@@ -63,7 +63,8 @@ those in your accessibility notes instead.
 | Keyboard Only / Mouse Only / Touch Only Option | Input | M21 / M22 / M24 |
 | Playable without Quick Time Events | Input | M16 for **every** QTE, or the game has none |
 | Playable at Your Own Pace | Input | No required action under time pressure, or every one is removable: D27, D29, M16/M17, D14, C01. Read Steam's definition. |
-| Chat Text-to-speech / Chat Speech-to-text | Input | K04 (check whether the field also covers incoming narration, R04) / K03 |
+| Chat Text-to-speech | Input | **R04**: incoming text chat narrated to the player in real time, including canned or quick-chat responses ("Good job!"), as Valve defines it. Verify with received messages and canned responses at the chosen speech volume. K04 (speaking the player's own outgoing text) is a separate capability and does **not** satisfy this field. |
+| Chat Speech-to-text | Input | K03: incoming voice chat transcribed in real time, shown with text chat |
 
 ### 3. Accessible Games Initiative (AGI) and Xbox
 
@@ -241,6 +242,8 @@ sizes, and the AGI "4:5:1" misprint (read 4.5:1): [option-catalog.md](../option-
 - [ ] Every ticked store field has a claim-matrix row whose IDs all `pass` in the shipped build,
       split by platform, language and mode.
 - [ ] "Playable without Vision" (if claimed) was checked by a full playthrough without sight.
+- [ ] Steam "Chat Text-to-speech" (if claimed): received text messages and canned responses are
+      read aloud to the player (R04). Outgoing typed-message speech (K04) alone does not qualify.
 - [ ] Achievement, trophy and leaderboard code has no reads of `assist`, `difficulty`,
       `settings` or `preset` (grep).
 - [ ] Assists on, then off, mid-save: the next achievement still unlocks in the platform dev tools.
@@ -253,6 +256,8 @@ sizes, and the AGI "4:5:1" misprint (read 4.5:1): [option-catalog.md](../option-
 
 - Ticking "Narrated Game Menus" because the main menu talks → every menu, dialog and setup screen.
 - Claiming "Playable without QTEs" with one auto-QTE missing → check every QTE, or no claim.
+- Ticking Steam "Chat Text-to-speech" for outgoing TTS (K04) → the field means incoming chat
+  narration (R04), including canned responses.
 - "Epilepsy safe" or "seizure free" → "Reduces flashing. Analysed with <tool, version>."
 - Copying Celeste's save marker or Steelrising's achievement lock → achievements read events only.
 - An "unlock all achievements" accessibility button → design an accessible route to the act (XR-057).

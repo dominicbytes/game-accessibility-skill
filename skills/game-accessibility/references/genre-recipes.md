@@ -218,7 +218,7 @@ accessible. Copy behaviour, never penalties: no achievement locks, save marks or
 - **Likely signals:** S051, S136 (AR), S137–S143; plus the underlying gameplay signals. XR is not a genre.
 - **Load:** vr-and-xr, camera-and-motion, input-and-motor, audio-and-captions; plus guides for the real gameplay.
 - **Usually skip unless present:** room-scale settings in non-XR builds; vehicle assists without vehicles.
-- **Must-not-miss:** seated mode that reaches every object and menu (M26); one-handed parity (M05); teleport, snap or smooth choice before the first move (O18, O19, O20); captions that follow the view (H30). Never disable guardian or boundary safety.
+- **Must-not-miss:** seated mode that reaches every object and menu (M43); one-handed parity (M05); teleport, snap or smooth choice before the first move (O18, O19, O20); captions that follow the view (H30). Never disable guardian or boundary safety.
 - **Reference games:** Cosmonious High one-handed mode and height adjustment ([Owlchemy FAQ](https://owlchemylabs.com/faq)); No Man's Sky VR comfort settings; verify headset coverage ([Hello Games](https://www.nomanssky.com/fractal-update/?cli_action=1677074777.055)); W3C XAUR needs, a guideline note, not a certification ([W3C](https://www.w3.org/TR/xaur/)).
 - **Verify:** calibrate, then use menus and every required object seated, one-handed, at low and high heights.
 

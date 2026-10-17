@@ -57,7 +57,22 @@ public:
 	bool IsSpeaking();
 };
 
-/** Bounded priority queue in front of one backend. Never blocks input; speech failure is silent and safe. */
+/** Which setting owns an utterance. Internal; not reflected. */
+enum class EA11ySpeechCategory : uint8
+{
+	/** Speak(): menus, buttons, values, focus. Owned by narration.enabled. */
+	Menu,
+	/** Unvoiced dialogue from the caption bus. Owned by narration.dialogue. */
+	Dialogue
+};
+
+/**
+ * Bounded priority queue in front of one backend. Never blocks input; speech failure is silent and safe.
+ * Two independent categories: menu/UI speech (Speak, gated by narration.enabled) and dialogue reading
+ * (unvoiced lines from the caption bus, gated by narration.dialogue). Turning a category's setting off
+ * stops its current utterance and discards its queued items; the other category is untouched. Every
+ * queued item is re-checked (setting and route ownership) just before it is dispatched.
+ */
 UCLASS()
 class GAMEACCESSIBILITY_API UA11yNarrationSubsystem : public UGameInstanceSubsystem
 {
@@ -78,9 +93,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Accessibility|Narration")
 	void StopAll();
 
-	/** When a native screen reader is speaking the UI, skip Focus speech to avoid double-speaking. */
+	/**
+	 * When a native screen reader is speaking the UI, skip Focus speech to avoid double-speaking. Turning it
+	 * on also stops and discards self-voiced focus speech that is current or queued.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Accessibility|Narration")
-	void SetNativeScreenReaderActive(bool bActive) { bNativeScreenReaderActive = bActive; }
+	void SetNativeScreenReaderActive(bool bActive);
 
 	UPROPERTY(BlueprintReadWrite, Category = "Accessibility|Narration")
 	int32 MaxQueueLength = 8;
@@ -89,23 +107,34 @@ protected:
 	UFUNCTION()
 	void HandleCaption(const FA11yCaptionEvent& Event, const FA11yCaptionRouting& Routing);
 
+	UFUNCTION()
+	void HandleSettingChanged(FName Key, const FString& Value);
+
 private:
 	struct FQueuedSpeech
 	{
 		FString Text;
 		EA11yNarrationPriority Priority = EA11yNarrationPriority::Low;
+		EA11ySpeechCategory Category = EA11ySpeechCategory::Menu;
 	};
 
-	void Enqueue(const FString& Text, EA11yNarrationPriority Priority, bool bInterrupt);
+	void Enqueue(const FString& Text, EA11yNarrationPriority Priority, EA11ySpeechCategory Category, bool bInterrupt);
 	bool TickQueue(float DeltaTime);
 	bool BackendAvailable();
 	float GetRate() const;
+	/** Setting still on, and this queue (not the native reader) still owns the route. */
+	bool IsStillWanted(EA11ySpeechCategory Category, EA11yNarrationPriority Priority) const;
+	/** Stops the current utterance if Pred matches it, and removes matching queued items. */
+	void DiscardWhere(TFunctionRef<bool(EA11ySpeechCategory, EA11yNarrationPriority)> Pred);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UObject> Backend;
 
 	TArray<FQueuedSpeech> Queue;
+	/** The last utterance handed to the backend. Only meaningful while the backend reports IsSpeaking. */
 	EA11yNarrationPriority CurrentPriority = EA11yNarrationPriority::Low;
+	EA11ySpeechCategory CurrentCategory = EA11ySpeechCategory::Menu;
+	bool bHasCurrent = false;
 	bool bNativeScreenReaderActive = false;
 	FTSTicker::FDelegateHandle TickerHandle;
 };

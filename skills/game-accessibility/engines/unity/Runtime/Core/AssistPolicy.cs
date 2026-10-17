@@ -14,8 +14,14 @@ namespace GameAccessibility
     {
         private readonly A11ySettingsStore _store;
 
-        /// <summary>Raised by <see cref="RequestSkip"/>. The handler must complete the challenge through its normal success path.</summary>
+        /// <summary>
+        /// Raised by <see cref="RequestSkip"/> (challenges) and <see cref="RequestSceneSkip"/> (sensitive scenes), at
+        /// most once per id until <see cref="ForgetSkip"/>. The handler must complete the challenge or scene through
+        /// its normal success path.
+        /// </summary>
         public event Action<string> SkipRequested;
+
+        private readonly HashSet<string> _skipped = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary>
         /// Damage sources NOT scaled by assist.damage_taken. Falls follow assist.no_fall_death instead.
@@ -133,13 +139,34 @@ namespace GameAccessibility
         public bool SceneSkipAvailable => _store.GetOr("content.scene_skip", false);
 
         /// <summary>
-        /// Requests a skip. Returns false when skips are not offered. Handlers must grant the same items, flags,
-        /// checkpoints and achievement events as winning, and the transition must be idempotent.
+        /// Requests a skip of a puzzle, chase or challenge. Gated on assist.skip_available only. Returns false when
+        /// challenge skips are not offered. Handlers must grant the same items, flags, checkpoints and achievement
+        /// events as winning. Repeated requests for the same id return true without completing it twice.
         /// </summary>
-        public bool RequestSkip(string challengeId)
+        public bool RequestSkip(string challengeId) => SkipAvailable && Complete(challengeId);
+
+        /// <summary>
+        /// Requests a skip of a scene listed in the content notices. Gated on content.scene_skip only, so it works
+        /// when challenge skips are off or assist.skip_available is not registered. Show the scene's short text
+        /// summary, then complete it through the same path and event as <see cref="RequestSkip"/>.
+        /// </summary>
+        public bool RequestSceneSkip(string sceneId) => SceneSkipAvailable && Complete(sceneId);
+
+        /// <summary>True when <paramref name="id"/> was already completed through a skip in this session.</summary>
+        public bool WasSkipped(string id) => id != null && _skipped.Contains(id);
+
+        /// <summary>Allows <paramref name="id"/> to be skipped again (the challenge or scene was reset or replayed).</summary>
+        public void ForgetSkip(string id)
         {
-            if (!SkipAvailable || string.IsNullOrEmpty(challengeId)) return false;
-            SkipRequested?.Invoke(challengeId);
+            if (id != null) _skipped.Remove(id);
+        }
+
+        // Shared completion for both kinds of skip: one event, at most once per id.
+        private bool Complete(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return false;
+            if (!_skipped.Add(id)) return true; // already completed: idempotent
+            SkipRequested?.Invoke(id);
             return true;
         }
 

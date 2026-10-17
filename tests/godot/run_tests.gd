@@ -107,6 +107,15 @@ func _eq(actual: Variant, expected: Variant, message: String) -> void:
 		_errors.append("%s (expected %s, got %s)" % [message, var_to_str(expected), var_to_str(actual)])
 
 
+# The headless root window is only 64x64 px, so caption views get a screen-sized parent.
+func _caption_view(width: float = 1280.0, height: float = 720.0) -> A11yCaptionView:
+	var frame: Control = _add(Control.new()) as Control
+	frame.size = Vector2(width, height)
+	var view: A11yCaptionView = A11yCaptionView.new()
+	frame.add_child(view)
+	return view
+
+
 func _action_event(pressed: bool) -> InputEventAction:
 	var event: InputEventAction = InputEventAction.new()
 	event.action = ACTION
@@ -288,6 +297,7 @@ func test_os_import_keeps_explicit_choice() -> void:
 	var changed: PackedStringArray = _store.import_os_preferences({"reduce_motion": true, "screen_reader_active": true})
 	_eq(_store.get_float("motion.camera_shake"), 0.75, "explicit camera_shake kept")
 	_eq(_store.get_float("motion.head_bob"), 0.0, "head_bob imported")
+	_eq(_store.get_float("motion.weapon_sway"), 0.0, "weapon_sway imported separately")
 	_eq(_store.get_bool("motion.reduce_motion"), true, "reduce_motion imported")
 	_eq(_store.get_bool("narration.enabled"), true, "screen reader turns narration on")
 	_eq(_store.get_bool("visual.high_contrast"), false, "absent preference changes nothing")
@@ -434,7 +444,37 @@ func test_timers_speed_aggression_skip() -> void:
 	_check(A11yAssistPolicy.request_skip("bridge_puzzle"), "skip requested")
 	_eq(skipped, ["bridge_puzzle"], "skip signal carries the challenge id")
 	_store.set_value("assist.skip_available", false)
-	_check(not A11yAssistPolicy.request_skip("bridge_puzzle"), "skip refused when not offered")
+	_check(not A11yAssistPolicy.request_skip("other_puzzle"), "skip refused when not offered")
+
+
+func test_scene_skip_independent_of_challenge_skip() -> void:
+	var completed: Array = []
+	_store.skip_requested.connect(func(id: String) -> void: completed.append(id))
+	for scene_on: bool in [true, false]:
+		for challenge_on: bool in [true, false]:
+			_store.clear_skip()
+			completed.clear()
+			_store.set_value("content.scene_skip", scene_on)
+			_store.set_value("assist.skip_available", challenge_on)
+			var combo: String = "scene_skip=%s, skip_available=%s" % [scene_on, challenge_on]
+			_eq(A11yAssistPolicy.request_scene_skip("spider_nest"), scene_on, "%s: scene skip follows content.scene_skip only" % combo)
+			_eq(A11yAssistPolicy.request_skip("bridge_puzzle"), challenge_on, "%s: challenge skip follows assist.skip_available only" % combo)
+			var expected: Array = []
+			if scene_on:
+				expected.append("spider_nest")
+			if challenge_on:
+				expected.append("bridge_puzzle")
+			_eq(completed, expected, "%s: both reach the same completion signal" % combo)
+			A11yAssistPolicy.request_scene_skip("spider_nest")
+			A11yAssistPolicy.request_skip("bridge_puzzle")
+			_eq(completed, expected, "%s: repeated requests complete only once" % combo)
+	_store.set_value("assist.skip_available", true)
+	A11yAssistPolicy.request_skip("bridge_puzzle")
+	_check(_store.was_skipped("bridge_puzzle"), "completed skip remembered")
+	_store.clear_skip("bridge_puzzle")
+	completed.clear()
+	_check(A11yAssistPolicy.request_skip("bridge_puzzle"), "skip allowed again after clear_skip")
+	_eq(completed, ["bridge_puzzle"], "cleared skip completes again on replay")
 
 
 # --- Input assist ---------------------------------------------------------------------------------
@@ -521,7 +561,7 @@ func test_flash_guard_rate_limit() -> void:
 	_eq(guard.request_flash(1.0, 1.0, 10.2), 1.0, "flash 2 allowed")
 	_eq(guard.request_flash(1.0, 1.0, 10.4), 1.0, "flash 3 allowed")
 	_eq(guard.request_flash(1.0, 1.0, 10.6), 0.0, "4th flash within 1 s blocked")
-	_eq(guard.request_flash(0.3, 0.02, 10.7), 0.3, "small dim flash not counted")
+	_eq(guard.request_flash(0.05, 0.02, 10.7), 0.05, "small, dim, non-red flash not counted")
 	_eq(guard.request_flash(1.0, 1.0, 11.5), 1.0, "allowed again once the window passed")
 	guard.reset()
 	_store.set_value("motion.reduce_flashing", true)
@@ -560,12 +600,79 @@ func test_flash_guard_blocks_sustained_strobe() -> void:
 	_check(reduced_allowed <= 10, "5 s limit also applies with reduce_flashing")
 
 
+func _check_flash_budgets(allowed: Array[float], label: String) -> void:
+	for t: float in allowed:
+		var in_one: int = allowed.filter(func(other: float) -> bool: return other > t - 1.0 and other <= t).size()
+		var in_five: int = allowed.filter(func(other: float) -> bool: return other > t - 5.0 and other <= t).size()
+		_check(in_one <= 3, "%s: at most 3 in the second ending at %s (got %d)" % [label, t, in_one])
+		_check(in_five <= 9, "%s: at most 9 in the 5 s ending at %s (got %d)" % [label, t, in_five])
+
+
+func test_flash_guard_counting_rule() -> void:
+	var guard: A11yFlashGuard = _add(A11yFlashGuard.new()) as A11yFlashGuard
+	# Small area, moderate intensity (0.09 of the screen, 0.4 change) at 4 Hz for 6 s.
+	var moderate: Array[float] = []
+	for i: int in 24:
+		var t: float = 10.0 + i * 0.25
+		if guard.request_flash(0.4, 0.09, t) > 0.0:
+			moderate.append(t)
+	_check(moderate.size() > 0 and moderate.size() < 24, "small-area moderate flashes are capped (allowed %d of 24)" % moderate.size())
+	_check_flash_budgets(moderate, "area 0.09, intensity 0.4")
+	# Small, dim, saturated red: red always counts.
+	guard.reset()
+	var red: Array[float] = []
+	for i: int in 24:
+		var t: float = 100.0 + i * 0.25
+		if guard.request_flash(0.05, 0.02, t, true) > 0.0:
+			red.append(t)
+	_check(red.size() > 0 and red.size() < 24, "small saturated-red flashes are capped (allowed %d of 24)" % red.size())
+	_check_flash_budgets(red, "small saturated red")
+	# Colour form: classifies red itself and returns the desaturated colour.
+	guard.reset()
+	var tint: Color = guard.request_flash_color(Color(1.0, 0.0, 0.0), 0.05, 0.02, 200.0)
+	_check(tint.a > 0.0 and not A11yFlashGuard.is_saturated_red(Color(tint.r, tint.g, tint.b)), "allowed red flash comes back desaturated")
+	guard.request_flash_color(Color(1.0, 0.0, 0.0), 0.05, 0.02, 200.1)
+	guard.request_flash_color(Color(1.0, 0.0, 0.0), 0.05, 0.02, 200.2)
+	_eq(guard.request_flash_color(Color(1.0, 0.0, 0.0), 0.05, 0.02, 200.3).a, 0.0, "4th small red flash within 1 s blocked")
+	# Small, dim and not red stays uncounted.
+	guard.reset()
+	var dim_allowed: int = 0
+	for i: int in 24:
+		if guard.request_flash(0.05, 0.02, 300.0 + i * 0.1) > 0.0:
+			dim_allowed += 1
+	_eq(dim_allowed, 24, "small, dim, non-red requests are not counted")
+	_check(guard.counts(0.05, 0.25), "area 0.25 counts at any intensity")
+	_check(guard.counts(0.1, 0.0), "intensity 0.1 counts at any area")
+	# Budget exports cannot be raised above 3 per 1 s and 9 per 5 s.
+	guard.reset()
+	guard.max_flashes_per_second = 10
+	guard.max_flashes_per_5_seconds = 50
+	_eq(guard.per_second_budget(), 3, "1 s budget clamped to 3")
+	_eq(guard.per_5_seconds_budget(), 9, "5 s budget clamped to 9")
+	var raised: Array[float] = []
+	for i: int in 24:
+		var t: float = 400.0 + i * 0.25
+		if guard.request_flash(1.0, 1.0, t) > 0.0:
+			raised.append(t)
+	_check_flash_budgets(raised, "raised exports")
+	guard.max_flashes_per_second = 1
+	guard.reset()
+	guard.request_flash(1.0, 1.0, 500.0)
+	_eq(guard.request_flash(1.0, 1.0, 500.5), 0.0, "exports can lower the budget")
+	# WCAG saturated red uses linearised sRGB channels.
+	_check(is_equal_approx(A11yFlashGuard.linear_channel(0.5), pow(0.555 / 1.055, 2.4)), "sRGB channel linearised")
+	_check(is_equal_approx(A11yFlashGuard.linear_channel(0.04), 0.04 / 12.92), "low channel uses the linear segment")
+	_check(A11yFlashGuard.is_saturated_red(Color(1.0, 0.3, 0.3)), "linear red share 0.87 is saturated red (encoded share is only 0.63)")
+	_check(not A11yFlashGuard.is_saturated_red(Color(1.0, 0.6, 0.6)), "pink is not saturated red")
+	_check(not A11yFlashGuard.is_saturated_red(A11yFlashGuard.desaturate_red(Color(1.0, 0.3, 0.3))), "desaturated light red no longer counts as red")
+
+
 # --- Captions -------------------------------------------------------------------------------------
 
 func test_caption_view_muted_and_speaker_names() -> void:
 	_store.set_value("audio.master", 0.0)
 	var bus: A11yCaptionBus = _add(A11yCaptionBus.new()) as A11yCaptionBus
-	var view: A11yCaptionView = _add(A11yCaptionView.new()) as A11yCaptionView
+	var view: A11yCaptionView = _caption_view()
 	_check(AudioServer.is_bus_mute(0), "audio muted for this test")
 	bus.post(A11yCaptionEvent.dialogue("Mara", "Keep your head down."))
 	_eq(view.get_visible_lines(), PackedStringArray(["Mara: Keep your head down."]), "subtitle shown with audio muted")
@@ -593,6 +700,116 @@ func test_caption_view_muted_and_speaker_names() -> void:
 	_eq(A11yCaptionBus.direction_word(Transform3D.IDENTITY, Vector3(0, 0, 5)), "behind", "direction word behind")
 
 
+const LONG_LINE: String = "The ferryman says the northern bridge collapsed during the storm, so every caravan must now take the mountain pass, which is slower, colder and watched by bandits who answer to the old baron of Karsk."
+
+
+func _words(text: String) -> PackedStringArray:
+	return text.replace("\n", " ").split(" ", false)
+
+
+func test_caption_view_paginates_long_text_at_200_percent() -> void:
+	_store.set_value("subtitles.size", 2.0)
+	var view: A11yCaptionView = _caption_view(640.0, 360.0)
+	var finished: Array = []
+	view.entry_finished.connect(func(done: A11yCaptionEvent, fully_shown: bool) -> void: finished.append([done, fully_shown]))
+	var event: A11yCaptionEvent = A11yCaptionEvent.dialogue("Ferryman", LONG_LINE, 4.0)
+	view.show_event(event)
+	var counts: PackedInt32Array = view.get_page_counts()
+	_check(counts.size() == 1 and counts[0] >= 3, "long line at 200%% split into several pages (got %s)" % str(counts))
+	var font: Font = view.get_theme_font(&"font", &"Label")
+	var width: float = view._line_width(56)
+	var pages: PackedStringArray = PackedStringArray()
+	var seconds: float = 0.0
+	while not view.get_visible_lines().is_empty() and seconds < 120.0:
+		var page: String = view.get_visible_lines()[0]
+		if pages.is_empty() or pages[pages.size() - 1] != page:
+			pages.append(page)
+			var lines: PackedStringArray = page.split("\n")
+			_check(lines.size() <= 2, "page has at most 2 lines: %s" % page.c_escape())
+			for line: String in lines:
+				var line_width: float = font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, 56).x
+				_check(line_width <= width, "line fits the 200%% width (%s > %s): %s" % [line_width, width, line])
+		for label: Label in view.find_children("*", "Label", true, false):
+			_eq(label.max_lines_visible, -1, "caption labels never limit their lines")
+		view.advance(0.25)
+		seconds += 0.25
+	_eq(pages.size(), counts[0], "every page was shown in order")
+	_eq(_words(" ".join(pages)), _words(view.format_line(event)), "every word of the long line was presented")
+	var page_chars: int = 0
+	for page: String in pages:
+		page_chars += page.length()
+	_check(seconds >= float(page_chars) / view.reading_chars_per_second, "pages stay for at least their reading time (%s s for %d characters)" % [seconds, page_chars])
+	_eq(finished, [[event, true]], "entry finished after its last page")
+
+
+func test_caption_view_manual_advance_and_reflow() -> void:
+	var view: A11yCaptionView = _caption_view()
+	var frame: Control = view.get_parent() as Control
+	var finished: Array = []
+	view.entry_finished.connect(func(done: A11yCaptionEvent, fully_shown: bool) -> void: finished.append([done, fully_shown]))
+	var event: A11yCaptionEvent = A11yCaptionEvent.dialogue("Ferryman", LONG_LINE, 3.0)
+	event.can_wait = true
+	view.show_event(event)
+	_check(view.is_waiting(), "text.auto_advance off: a line that can wait waits for the player")
+	var first: String = view.get_visible_lines()[0]
+	view.advance(100.0)
+	_eq(view.get_visible_lines(), PackedStringArray([first]), "a waiting page does not time out")
+	var wide_pages: int = view.get_page_counts()[0]
+	_check(wide_pages >= 2, "long line needs more than one page at 1280 px")
+	_check(view.advance_page(), "manual advance turns the page")
+	var second: String = view.get_visible_lines()[0]
+	_check(second != first, "second page shown")
+	_store.set_value("subtitles.size", 2.0)
+	frame.size = Vector2(640.0, 360.0)
+	_eq(view.size.x, 640.0, "view follows its parent size")
+	_check(view.get_page_counts()[0] > wide_pages, "smaller view and larger size re-split into more pages")
+	_check(view.get_visible_lines()[0].contains(_words(second)[0]), "reflow keeps the reading position")
+	var shown: PackedStringArray = PackedStringArray([first])
+	var guard: int = 0
+	while not view.get_visible_lines().is_empty() and guard < 50:
+		shown.append(view.get_visible_lines()[0])
+		view.advance_page()
+		guard += 1
+	_eq(finished, [[event, true]], "manual advance past the last page finishes the entry")
+	var joined: String = " ".join(_words(" ".join(shown)))
+	for word: String in _words(view.format_line(event)):
+		_check(joined.contains(word), "word '%s' presented" % word)
+	var timed: A11yCaptionEvent = A11yCaptionEvent.dialogue("Ferryman", LONG_LINE, 3.0)
+	timed.can_wait = true
+	_store.set_value("text.auto_advance", true)
+	view.show_event(timed)
+	_check(not view.is_waiting(), "text.auto_advance on: pages turn by time")
+	view.advance(120.0)
+	_eq(view.get_visible_lines().size(), 0, "timed pages finish")
+
+
+func test_caption_toggles_apply_immediately() -> void:
+	var bus: A11yCaptionBus = _add(A11yCaptionBus.new()) as A11yCaptionBus
+	var view: A11yCaptionView = _caption_view()
+	_store.set_value("subtitles.sound_captions", true)
+	bus.post(A11yCaptionEvent.dialogue("Mara", "Run."))
+	bus.post(A11yCaptionEvent.sound("Alarm blaring", "alarm"))
+	_eq(view.get_visible_lines(), PackedStringArray(["Mara: Run.", "[Alarm blaring]"]), "dialogue and sound caption shown")
+	_store.set_value("subtitles.sound_captions", false)
+	_eq(view.get_visible_lines(), PackedStringArray(["Mara: Run."]), "sound captions off hides the active caption at once")
+	_store.set_value("subtitles.sound_captions", true)
+	bus.post(A11yCaptionEvent.sound("Alarm blaring", "alarm"))
+	_store.set_value("subtitles.dialogue", false)
+	_eq(view.get_visible_lines(), PackedStringArray(["[Alarm blaring]"]), "subtitles off hides the active dialogue at once")
+	view.clear()
+	_store.set_value("subtitles.dialogue", true)
+	_store.set_value("subtitles.direction", true)
+	_store.set_value("subtitles.speaker_names", false)
+	var line: A11yCaptionEvent = A11yCaptionEvent.dialogue("Mara", "Over here.")
+	line.direction = "left"
+	bus.post(line)
+	_eq(view.get_visible_lines(), PackedStringArray(["(left) Over here."]), "direction shown with speaker names off")
+	_store.set_value("subtitles.speaker_names", true)
+	_eq(view.get_visible_lines(), PackedStringArray(["Mara (left): Over here."]), "names and direction together")
+	_store.set_value("subtitles.direction", false)
+	_eq(view.get_visible_lines(), PackedStringArray(["Mara: Over here."]), "names without direction")
+
+
 # --- Content and guidance -------------------------------------------------------------------------
 
 func test_content_variant_swaps_levels() -> void:
@@ -601,6 +818,7 @@ func test_content_variant_swaps_levels() -> void:
 	hitbox.name = "Hitbox"
 	spider.add_child(hitbox)
 	var variant: A11yContentVariant = A11yContentVariant.new()
+	variant.warn_on_missing = false
 	for level: String in ["0", "1", "2", "3"]:
 		var look: Node2D = Node2D.new()
 		look.name = level
@@ -617,7 +835,7 @@ func test_content_variant_swaps_levels() -> void:
 	_check(hitbox.visible and hitbox.process_mode == Node.PROCESS_MODE_INHERIT, "hitbox outside the variant untouched")
 	(looks["3"] as Node).free()
 	_store.set_value("content.spiders", 3)
-	_check(variant.current_variant() == looks["2"], "missing level falls back to the nearest available")
+	_check(variant.current_variant() == null and not (looks["2"] as Node2D).visible, "missing highest level never falls back below the requested level")
 	var gore: A11yContentVariant = A11yContentVariant.new()
 	gore.setting_id = "content.blood"
 	gore.tag = "gore"
@@ -628,6 +846,61 @@ func test_content_variant_swaps_levels() -> void:
 	_add(gore)
 	_store.set_value("content.blood", "reduced")
 	_eq(String(gore.current_variant().name), "off", "missing enum level falls back to the more filtered variant")
+
+
+func _variant_with(levels: PackedStringArray, reports: Array) -> A11yContentVariant:
+	var variant: A11yContentVariant = A11yContentVariant.new()
+	variant.warn_on_missing = false
+	for level: String in levels:
+		var look: Node2D = Node2D.new()
+		look.name = level
+		variant.add_child(look)
+	variant.coverage_missing.connect(func(id: String, requested: String, missing: PackedStringArray, used_fallback: bool) -> void:
+		reports.append([id, requested, missing, used_fallback]))
+	_add(variant)
+	return variant
+
+
+func _visible_looks(variant: A11yContentVariant) -> PackedStringArray:
+	var shown: PackedStringArray = PackedStringArray()
+	for child: Node in variant.get_children():
+		if (child as Node2D).visible:
+			shown.append(String(child.name))
+	return shown
+
+
+func test_content_variant_never_falls_below_requested() -> void:
+	# Missing highest level: 0, 1, 2 authored; the player asks for 3.
+	var reports: Array = []
+	var variant: A11yContentVariant = _variant_with(PackedStringArray(["0", "1", "2"]), reports)
+	_eq(variant.missing_levels(), PackedStringArray(["3"]), "coverage check lists the missing level")
+	_eq(reports.size(), 0, "no report while the requested level exists")
+	_store.set_value("content.spiders", 3)
+	_check(variant.current_variant() == null, "missing highest level: nothing is selected")
+	_eq(_visible_looks(variant), PackedStringArray(), "missing highest level: presentation hidden, original never shown")
+	_eq(reports, [["content.spiders", "3", PackedStringArray(["3"]), false]], "missing coverage reported")
+	var neutral: Node2D = Node2D.new()
+	neutral.name = "Neutral"
+	variant.add_child(neutral)
+	variant.neutral_fallback = NodePath("Neutral")
+	variant.apply()
+	_check(variant.current_variant() == neutral, "authored neutral fallback used")
+	_eq(_visible_looks(variant), PackedStringArray(["Neutral"]), "only the neutral fallback is visible")
+	_eq(reports.back(), ["content.spiders", "3", PackedStringArray(["3"]), true], "fallback use reported")
+	_store.set_value("content.spiders", 1)
+	_eq(_visible_looks(variant), PackedStringArray(["1"]), "covered level hides the neutral fallback again")
+	# Missing intermediate level: 0, 1, 3 authored.
+	_store.set_value("content.spiders", 0)
+	var gap_reports: Array = []
+	var gap: A11yContentVariant = _variant_with(PackedStringArray(["0", "1", "3"]), gap_reports)
+	_store.set_value("content.spiders", 2)
+	_eq(_visible_looks(gap), PackedStringArray(["3"]), "missing intermediate level uses the more filtered variant, never level 1")
+	_eq(gap_reports.size(), 0, "a more filtered variant is full coverage")
+	# Missing intermediate and highest: 0, 1 authored; level 2 requested.
+	var low_reports: Array = []
+	var low: A11yContentVariant = _variant_with(PackedStringArray(["0", "1"]), low_reports)
+	_eq(_visible_looks(low), PackedStringArray(), "nothing at or above level 2: hidden")
+	_eq(low_reports, [["content.spiders", "2", PackedStringArray(["2", "3"]), false]], "every missing level from the request upward reported")
 
 
 func test_guidance_off_hides_guidance_not_hazard() -> void:
@@ -711,6 +984,58 @@ func test_camera_comfort() -> void:
 	_check(attributes.dof_blur_far_enabled and not attributes.dof_blur_near_enabled, "authored depth of field restored live")
 	_store.set_value("motion.chromatic_aberration", false)
 	_check(not comfort.chromatic_aberration_enabled(), "chromatic aberration switch")
+
+
+func test_camera_sway_and_motion_overrides() -> void:
+	var comfort: A11yCameraComfort = _add(A11yCameraComfort.new()) as A11yCameraComfort
+	_eq(comfort.scale_sway(10.0), 5.0, "weapon sway at its 50% default")
+	_store.set_value("motion.head_bob", 0.0)
+	_eq(comfort.scale_bob(10.0), 0.0, "head bob off")
+	_eq(comfort.scale_sway(10.0), 5.0, "weapon sway independent of head bob")
+	_store.set_value("motion.weapon_sway", 0.0)
+	_store.set_value("motion.head_bob", 1.0)
+	_eq(comfort.scale_sway(10.0), 0.0, "weapon sway off")
+	_eq(comfort.scale_bob(10.0), 10.0, "head bob independent of weapon sway")
+	var checks: Dictionary = {
+		"motion.auto_camera": comfort.allow_auto_camera,
+		"motion.fov_effects": comfort.allow_fov_effects,
+		"motion.speed_lines": comfort.allow_speed_lines,
+		"motion.parallax": comfort.allow_parallax,
+		"motion.menu_animation": comfort.allow_menu_animation,
+	}
+	for key: String in checks:
+		_check(bool((checks[key] as Callable).call()), "%s follows reduce motion off: allowed" % key)
+	_store.set_value("motion.reduce_motion", true)
+	for key: String in checks:
+		_check(not bool((checks[key] as Callable).call()), "%s follows reduce motion on: stopped" % key)
+	_store.set_value("motion.parallax", "on")
+	_check(comfort.allow_parallax(), "parallax 'on' overrides reduce motion")
+	_check(not comfort.allow_speed_lines(), "other effects keep following reduce motion")
+	_store.set_value("motion.reduce_motion", false)
+	_store.set_value("motion.auto_camera", "off")
+	_check(not comfort.allow_auto_camera(), "auto camera 'off' without reduce motion")
+	_check(comfort.allow_fov_effects() and comfort.allow_menu_animation(), "other effects still allowed")
+
+
+func test_resolve_toggle_and_outline_classes() -> void:
+	_eq(_store.resolve_toggle("visual.outline_enemies", false), false, "follow returns the follow value (false)")
+	_eq(_store.resolve_toggle("visual.outline_enemies", true), true, "follow returns the follow value (true)")
+	_store.set_value("visual.outline_enemies", "on")
+	_eq(_store.resolve_toggle("visual.outline_enemies", false), true, "on returns true")
+	_store.set_value("visual.outline_enemies", "off")
+	_eq(_store.resolve_toggle("visual.outline_enemies", true), false, "off returns false")
+	_eq(_store.resolve_toggle("no.such_key", true), true, "unregistered key returns the follow value")
+	_eq(_store.resolve_toggle("no.such_key", false), false, "unregistered key returns the follow value (false)")
+	_store.set_value("visual.high_contrast", true)
+	_store.set_value("visual.outline_hazards", "on")
+	var umbrella: bool = _store.get_bool("visual.high_contrast")
+	var resolved: Dictionary = {}
+	for key: String in ["visual.outline_enemies", "visual.outline_allies", "visual.outline_interactables", "visual.outline_hazards"]:
+		resolved[key] = _store.resolve_toggle(key, umbrella)
+	_eq(resolved, {"visual.outline_enemies": false, "visual.outline_allies": true, "visual.outline_interactables": true, "visual.outline_hazards": true}, "outline classes resolve independently over visual.high_contrast")
+	_store.set_value("visual.high_contrast", false)
+	_eq(_store.resolve_toggle("visual.outline_allies", _store.get_bool("visual.high_contrast")), false, "following class turns off with the umbrella")
+	_eq(_store.resolve_toggle("visual.outline_hazards", _store.get_bool("visual.high_contrast")), true, "overridden class keeps its own value")
 
 
 func test_color_tokens() -> void:
@@ -805,6 +1130,79 @@ func test_narrator_safe_without_tts() -> void:
 	_eq(spoken.back(), "Text size, slider, 150%", "slider description")
 	_store.set_value("narration.enabled", false)
 	_check(not narrator.speak("Hidden"), "narration off stays silent")
+
+
+func test_narrator_menu_off_stops_menu_speech() -> void:
+	var narrator: A11yNarrator = _add(A11yNarrator.new()) as A11yNarrator
+	_store.set_value("narration.enabled", true)
+	_store.set_value("narration.dialogue", true)
+	var spoken: Array = []
+	var stops: Array = []
+	var busy: Array = [false]
+	var reader: Array = [false]
+	narrator.backend = func(text: String, _rate: float) -> void:
+		spoken.append(text)
+		busy[0] = true
+	narrator.backend_is_speaking = func() -> bool: return bool(busy[0])
+	narrator.backend_stop = func() -> void:
+		stops.append(true)
+		busy[0] = false
+	narrator.screen_reader_probe = func() -> bool: return bool(reader[0])
+	_check(narrator.speak("Audio settings. Use left and right to change values."), "menu speech accepted")
+	narrator.speak("Music volume, slider, 60%")
+	_check(narrator.speak_dialogue("Note: the key is under the mat."), "dialogue reading accepted")
+	_eq(spoken, ["Audio settings. Use left and right to change values."], "first item speaking, the rest queued")
+	_eq(narrator.pending(), PackedStringArray(["Music volume, slider, 60%", "Note: the key is under the mat."]), "queue holds menu and dialogue")
+	_store.set_value("narration.enabled", false)
+	_eq(stops.size(), 1, "turning menu narration off stops the current menu speech")
+	_eq(narrator.pending(), PackedStringArray(["Note: the key is under the mat."]), "queued menu speech discarded, dialogue kept")
+	narrator.pump()
+	_eq(spoken.back(), "Note: the key is under the mat.", "dialogue reading continues independently")
+	_check(not narrator.speak("Hidden menu item"), "menu narration off stays silent")
+	_check(narrator.speak_dialogue("Second note."), "dialogue still speaks with menu narration off")
+	_store.set_value("narration.enabled", true)
+	var button: Button = _add(Button.new()) as Button
+	button.text = "Play"
+	_check(narrator.narrate_focus(button), "focus speech queued while the backend is busy")
+	_eq(stops.size(), 1, "menu focus speech does not cut off dialogue reading")
+	reader[0] = true
+	for i: int in 3:
+		busy[0] = false
+		narrator.pump()
+	_check(spoken.has("Second note."), "queued dialogue spoken")
+	_check(not spoken.has("Play, button"), "route re-checked at dispatch: focus speech dropped once the screen reader is active")
+	_eq(narrator.pending().size(), 0, "queue drained")
+	_store.set_value("narration.dialogue", false)
+	_check(not narrator.speak_dialogue("Third note."), "dialogue reading off stays silent")
+
+
+func test_narrator_value_changes_follow_route_owner() -> void:
+	var narrator: A11yNarrator = _add(A11yNarrator.new()) as A11yNarrator
+	_store.set_value("narration.enabled", true)
+	var spoken: Array = []
+	var reader: Array = [true]
+	narrator.backend = func(text: String, _rate: float) -> void: spoken.append(text)
+	narrator.screen_reader_probe = func() -> bool: return bool(reader[0])
+	var slider: HSlider = _add(HSlider.new()) as HSlider
+	slider.set_meta(&"a11y_name", "Music volume")
+	var toggle: CheckButton = _add(CheckButton.new()) as CheckButton
+	toggle.text = "Subtitles"
+	narrator.attach_to_tree(slider)
+	narrator.attach_to_tree(toggle)
+	slider.grab_focus()
+	slider.value = 40.0
+	toggle.grab_focus()
+	toggle.button_pressed = true
+	_eq(spoken.size(), 0, "screen reader active: no self-voiced focus or value speech")
+	reader[0] = false
+	slider.grab_focus()
+	spoken.clear()
+	slider.value = 60.0
+	_eq(spoken.size(), 1, "reader inactive: one value announcement")
+	toggle.grab_focus()
+	spoken.clear()
+	toggle.button_pressed = false
+	_eq(spoken, ["off"], "toggle value announced once")
 
 
 func test_addon_files_load() -> void:

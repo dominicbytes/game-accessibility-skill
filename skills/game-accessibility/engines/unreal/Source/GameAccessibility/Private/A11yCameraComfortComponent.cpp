@@ -2,6 +2,7 @@
 // game-accessibility skill: CameraComfort. NOT COMPILED by the author; please report compile errors.
 
 #include "A11yCameraComfortComponent.h"
+#include "A11yDepthOfFieldSubsystem.h"
 #include "A11ySettingsSubsystem.h"
 
 #include "Camera/CameraComponent.h"
@@ -12,7 +13,6 @@
 #include "Engine/GameViewportClient.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
-#include "HAL/IConsoleManager.h"
 
 #ifndef A11Y_UE_HAS_DOF_ENABLED
 #define A11Y_UE_HAS_DOF_ENABLED 0
@@ -44,6 +44,12 @@ void UA11yCameraComfortComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	if (UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(this))
 	{
 		Settings->OnSettingChanged.RemoveDynamic(this, &UA11yCameraComfortComponent::HandleSettingChanged);
+	}
+	// Hand the global DOF override back to its persistent owner. The owner restores the authored quality
+	// only when no other component still holds a request, so a level change or overlap stays balanced.
+	if (UA11yDepthOfFieldSubsystem* Dof = UA11yDepthOfFieldSubsystem::Get(this))
+	{
+		Dof->Release(this);
 	}
 	ShakeScales.Reset();
 	Super::EndPlay(EndPlayReason);
@@ -90,6 +96,12 @@ float UA11yCameraComfortComponent::GetHeadBobScale() const
 	return Settings ? Settings->GetFloat(TEXT("motion.head_bob"), 1.f) : 1.f;
 }
 
+float UA11yCameraComfortComponent::GetWeaponSwayScale() const
+{
+	const UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(this);
+	return Settings ? Settings->GetFloat(TEXT("motion.weapon_sway"), 1.f) : 1.f;
+}
+
 float UA11yCameraComfortComponent::GetScreenEffectsScale() const
 {
 	const UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(this);
@@ -102,6 +114,16 @@ bool UA11yCameraComfortComponent::IsReduceMotionOn() const
 	return Settings && Settings->GetBool(TEXT("motion.reduce_motion"), false);
 }
 
+bool UA11yCameraComfortComponent::IsMotionEffectEnabled(const UObject* WorldContextObject, FName OverrideKey)
+{
+	const UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(WorldContextObject);
+	if (!Settings)
+	{
+		return true; // no store: as authored
+	}
+	return Settings->ResolveToggle(OverrideKey, !Settings->GetBool(TEXT("motion.reduce_motion"), false));
+}
+
 float UA11yCameraComfortComponent::ScaleForShake(const UCameraShakeBase* Shake) const
 {
 	for (const TSubclassOf<UCameraShakeBase>& BobClass : HeadBobShakeClasses)
@@ -109,6 +131,13 @@ float UA11yCameraComfortComponent::ScaleForShake(const UCameraShakeBase* Shake) 
 		if (Shake && *BobClass && Shake->IsA(BobClass))
 		{
 			return GetHeadBobScale();
+		}
+	}
+	for (const TSubclassOf<UCameraShakeBase>& SwayClass : WeaponSwayShakeClasses)
+	{
+		if (Shake && *SwayClass && Shake->IsA(SwayClass))
+		{
+			return GetWeaponSwayScale();
 		}
 	}
 	return GetShakeScale();
@@ -254,25 +283,12 @@ void UA11yCameraComfortComponent::ApplyDepthOfField(bool bEnabled)
 		Camera->PostProcessSettings.DepthOfFieldEnabled = bEnabled;
 	}
 #else
-	// Global fallback. ECVF_SetByCode outranks scalability, so the value stays pinned at code priority
-	// after restore; if your options menu changes DOF quality, route it through here.
-	IConsoleVariable* DofQuality = IConsoleManager::Get().FindConsoleVariable(TEXT("r.DepthOfFieldQuality"));
-	if (!DofQuality)
+	// Global fallback. r.DepthOfFieldQuality is global, so this component never stores a restore value of
+	// its own: the persistent GameInstance owner captures the authored quality once and reference-counts
+	// requests across components and level changes.
+	if (UA11yDepthOfFieldSubsystem* Dof = UA11yDepthOfFieldSubsystem::Get(this))
 	{
-		return;
-	}
-	if (!bEnabled)
-	{
-		if (SavedDofQuality < 0)
-		{
-			SavedDofQuality = DofQuality->GetInt();
-		}
-		DofQuality->Set(0, ECVF_SetByCode);
-	}
-	else if (SavedDofQuality >= 0)
-	{
-		DofQuality->Set(SavedDofQuality, ECVF_SetByCode);
-		SavedDofQuality = -1;
+		Dof->SetDisabledBy(this, !bEnabled);
 	}
 #endif
 }

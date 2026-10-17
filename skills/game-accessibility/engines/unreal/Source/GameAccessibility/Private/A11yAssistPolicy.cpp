@@ -114,6 +114,41 @@ bool UA11yAssistPolicy::RequestSkip(const UObject* WorldContextObject, FName Cha
 	{
 		return false;
 	}
-	Settings->OnChallengeSkipRequested.Broadcast(ChallengeId);
-	return true;
+	return Settings->SubmitSkipRequest(ChallengeId);
+}
+
+bool UA11yAssistPolicy::IsSceneSkipAvailable(const UObject* WorldContextObject)
+{
+	const UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(WorldContextObject);
+	return Settings && Settings->HasKey(TEXT("content.scene_skip")) && Settings->GetBool(TEXT("content.scene_skip"), false);
+}
+
+bool UA11yAssistPolicy::RequestSceneSkip(const UObject* WorldContextObject, FName SceneId)
+{
+	UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(WorldContextObject);
+	if (!Settings || !IsSceneSkipAvailable(WorldContextObject))
+	{
+		return false;
+	}
+	return Settings->SubmitSkipRequest(SceneId);
+}
+
+void UA11yAssistPolicy::ClearSkipRequest(const UObject* WorldContextObject, FName Id)
+{
+	if (UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(WorldContextObject))
+	{
+		Settings->ClearSkipRequest(Id);
+	}
+}
+
+bool UA11yAssistPolicy::AreJumpScaresReduced(const UObject* WorldContextObject)
+{
+	const UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(WorldContextObject);
+	return Settings && Settings->GetEnum(TEXT("content.jump_scares"), TEXT("full")) == TEXT("reduced");
+}
+
+bool UA11yAssistPolicy::AreScareWarningsOn(const UObject* WorldContextObject)
+{
+	const UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(WorldContextObject);
+	return Settings && Settings->GetBool(TEXT("content.scare_warnings"), false);
 }

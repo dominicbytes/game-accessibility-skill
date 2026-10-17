@@ -48,6 +48,25 @@ int32 UA11yFlashGuardSubsystem::GetCountedFlashesInLastFiveSeconds() const
 	return CountSince(Now, A11yFlashGuardPrivate::LongWindowSeconds);
 }
 
+bool UA11yFlashGuardSubsystem::IsSaturatedRed(const FLinearColor& LinearColor)
+{
+	// Linear channels (FLinearColor). Negative values from HDR maths are treated as 0.
+	const float R = FMath::Max(0.f, LinearColor.R);
+	const float G = FMath::Max(0.f, LinearColor.G);
+	const float B = FMath::Max(0.f, LinearColor.B);
+	const float Sum = R + G + B;
+	return Sum > KINDA_SMALL_NUMBER && R / Sum >= 0.8f;
+}
+
+bool UA11yFlashGuardSubsystem::CountsTowardBudget(float Intensity, float ScreenArea, bool bSaturatedRed) const
+{
+	// Conservative: ANY condition counts. The requested intensity is used, not the reduced-mode cap, so a
+	// softened flash still spends budget.
+	return bSaturatedRed
+		|| FMath::Clamp(ScreenArea, 0.f, 1.f) >= FMath::Clamp(LargeAreaFraction, 0.f, 1.f)
+		|| FMath::Clamp(Intensity, 0.f, 1.f) >= FMath::Clamp(BrightIntensityThreshold, 0.f, 1.f);
+}
+
 FA11yFlashResult UA11yFlashGuardSubsystem::RequestFlash(float Intensity, float ScreenArea, bool bSaturatedRed)
 {
 	const double Now = FPlatformTime::Seconds();
@@ -56,24 +75,22 @@ FA11yFlashResult UA11yFlashGuardSubsystem::RequestFlash(float Intensity, float S
 	FA11yFlashResult Result;
 	Result.Style = EA11yFlashStyle::Flash;
 	Result.Intensity = FMath::Clamp(Intensity, 0.f, 1.f);
-	Result.bDesaturate = bSaturatedRed; // in every mode
+	Result.bDesaturate = bSaturatedRed; // always, in every mode, whether or not the flash is allowed
 
 	const UA11ySettingsSubsystem* Settings = GetGameInstance() ? GetGameInstance()->GetSubsystem<UA11ySettingsSubsystem>() : nullptr;
 	if (Settings && Settings->GetBool(TEXT("motion.reduce_flashing"), false))
 	{
 		Result.Style = EA11yFlashStyle::SoftFade;
-		Result.Intensity = FMath::Min(Result.Intensity, ReducedIntensityCap);
-		Result.MinFadeSeconds = ReducedMinFadeSeconds;
+		Result.Intensity = FMath::Min(Result.Intensity, FMath::Max(0.f, ReducedIntensityCap));
+		Result.MinFadeSeconds = FMath::Max(0.f, ReducedMinFadeSeconds);
 	}
 
-	const bool bCounts = bSaturatedRed
-		|| FMath::Clamp(ScreenArea, 0.f, 1.f) >= LargeAreaFraction
-		|| Result.Intensity >= BrightIntensityThreshold;
-	if (!bCounts)
+	if (!CountsTowardBudget(Intensity, ScreenArea, bSaturatedRed))
 	{
 		return Result;
 	}
 
+	// Hard budgets: never above 3 per 1 s or 9 per 5 s, whatever the configuration.
 	const int32 ShortLimit = FMath::Clamp(MaxCountedFlashesPerSecond, 0, 3);
 	const int32 LongLimit = FMath::Clamp(MaxCountedFlashesPerFiveSeconds, 0, 9);
 	const int32 InShort = CountSince(Now, A11yFlashGuardPrivate::ShortWindowSeconds);
@@ -82,6 +99,7 @@ FA11yFlashResult UA11yFlashGuardSubsystem::RequestFlash(float Intensity, float S
 	{
 		Result.Style = EA11yFlashStyle::Suppressed;
 		Result.Intensity = 0.f;
+		Result.MinFadeSeconds = 0.f;
 		UE_LOG(LogA11y, Verbose, TEXT("FlashGuard suppressed a flash (%d in 1 s, %d in 5 s)."), InShort, InLong);
 		return Result;
 	}

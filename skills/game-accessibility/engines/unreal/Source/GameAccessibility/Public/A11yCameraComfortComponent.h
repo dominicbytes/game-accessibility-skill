@@ -4,7 +4,8 @@
 //
 // Add to the player pawn (or the PlayerController). It:
 //  - scales EVERY active camera shake on the owning PlayerCameraManager each frame by motion.camera_shake
-//    (or motion.head_bob for classes listed in HeadBobShakeClasses), using UCameraShakeBase::ShakeScale on
+//    (motion.head_bob for classes in HeadBobShakeClasses, motion.weapon_sway for classes in
+//    WeaponSwayShakeClasses; bob and sway are separate keys), using UCameraShakeBase::ShakeScale on
 //    instances read from UCameraModifier_CameraShake::GetActiveCameraShakes. This also covers shakes started
 //    elsewhere (UCameraShakeSourceComponent, PlayWorldCameraShake, Sequencer) as long as they run through
 //    the camera manager. Verify Sequencer shakes in your engine version.
@@ -12,10 +13,14 @@
 //    MotionBlurAmount (motion.motion_blur), SceneFringeIntensity (motion.chromatic_aberration),
 //    VignetteIntensity (motion.screen_effects) and depth of field (motion.depth_of_field).
 //    Depth of field: define A11Y_UE_HAS_DOF_ENABLED=1 if your FPostProcessSettings has DepthOfFieldEnabled
-//    (listed in current API docs; absent from the 5.0-5.4 Python docs). Otherwise the component sets the
-//    global r.DepthOfFieldQuality cvar to 0 and restores the previous value when the option is turned on.
+//    (listed in current API docs; absent from the 5.0-5.4 Python docs). Otherwise the global
+//    r.DepthOfFieldQuality cvar is overridden through UA11yDepthOfFieldSubsystem, the single persistent
+//    owner that keeps the authored quality across level changes and balances overlapping components.
 //  - sets the camera FOV from motion.fov (vertical degrees in the registry; UE FieldOfView is horizontal
 //    under the default AspectRatio_MaintainXFOV, so it converts using the viewport aspect).
+//  - exposes the per-effect motion overrides (motion.auto_camera, motion.fov_effects, motion.speed_lines,
+//    motion.parallax, motion.menu_animation) through IsMotionEffectEnabled: "on"/"off" win, "follow"
+//    uses !motion.reduce_motion.
 
 #pragma once
 
@@ -37,7 +42,7 @@ class GAMEACCESSIBILITY_API UA11yCameraComfortComponent : public UActorComponent
 public:
 	UA11yCameraComfortComponent();
 
-	/** Starts a shake with AuthoredScale x motion.camera_shake (or head_bob). Returns null when scaled to 0. */
+	/** Starts a shake with AuthoredScale x motion.camera_shake (or head_bob / weapon_sway). Returns null when scaled to 0. */
 	UFUNCTION(BlueprintCallable, Category = "Accessibility|Camera")
 	UCameraShakeBase* PlayCameraShake(TSubclassOf<UCameraShakeBase> ShakeClass, float AuthoredScale = 1.f);
 
@@ -48,13 +53,25 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Accessibility|Camera")
 	float GetHeadBobScale() const;
 
+	/** motion.weapon_sway: visual sway and breathing of held items. Never scale aim accuracy with it. */
+	UFUNCTION(BlueprintPure, Category = "Accessibility|Camera")
+	float GetWeaponSwayScale() const;
+
 	/** Multiply damage overlays, distortion and other UMG/material screen effects by this. */
 	UFUNCTION(BlueprintPure, Category = "Accessibility|Camera")
 	float GetScreenEffectsScale() const;
 
-	/** Stop automatic camera swings, zoom pulses, parallax and animated menus when true. */
+	/** The motion.reduce_motion umbrella. Per-effect code should ask IsMotionEffectEnabled instead. */
 	UFUNCTION(BlueprintPure, Category = "Accessibility|Camera")
 	bool IsReduceMotionOn() const;
+
+	/**
+	 * Per-effect motion override: motion.auto_camera, motion.fov_effects, motion.speed_lines,
+	 * motion.parallax or motion.menu_animation. "on"/"off" are the player's explicit choice; "follow" or an
+	 * unregistered key resolves to !motion.reduce_motion. Static so menus and widgets can call it too.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Accessibility|Camera", meta = (WorldContext = "WorldContextObject"))
+	static bool IsMotionEffectEnabled(const UObject* WorldContextObject, FName OverrideKey);
 
 	UFUNCTION(BlueprintCallable, Category = "Accessibility|Camera")
 	void SetCamera(UCameraComponent* InCamera);
@@ -66,6 +83,10 @@ public:
 	/** Shakes of these classes count as head bob and use motion.head_bob. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Accessibility|Camera")
 	TArray<TSubclassOf<UCameraShakeBase>> HeadBobShakeClasses;
+
+	/** Shakes of these classes count as weapon sway or breathing and use motion.weapon_sway. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Accessibility|Camera")
+	TArray<TSubclassOf<UCameraShakeBase>> WeaponSwayShakeClasses;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Accessibility|Camera")
 	bool bScaleAllActiveShakes = true;
@@ -107,8 +128,6 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UCameraComponent> Camera;
-
-	int32 SavedDofQuality = -1;
 
 	TMap<TWeakObjectPtr<UCameraShakeBase>, FShakeScaleRecord> ShakeScales;
 

@@ -56,7 +56,7 @@ Assessing means checking. A silent game needs no subtitle menu, but you confirm 
 | S002 Settings before gameplay | Boot flow, first-launch screen, preferences file | B: L01, L02, L04, C30, R01 | screen-reader-and-voice, mods-hardware-and-platforms |
 | S003 Text or symbols carry meaning | Labels, icons, numbers, cards, world signs | B: V01, V03, V16, R10; C: V02, V13 | text-and-readability |
 | S004 Colour conveys state | Team colours, rarity, key/lock pairs, damage types, good/bad | B: V25; C: V23, V24 (filters extra only) | color-and-clarity |
-| S005 Shape, position or animation alone conveys state | Poses, board patterns, gesture clues | B: V25, R10; C: H34, R15; A: R16–R18 | color-and-clarity, screen-reader-and-voice |
+| S005 Shape, position or animation alone conveys state | Poses, board patterns, gesture clues | B: V25, R10; C: H34, R15, R17; A: R16, R18 | color-and-clarity, screen-reader-and-voice |
 | S006 Gameplay-significant audio | Alerts, timer ticks, enemy cues, whistles, music clues | B: H01; C: H02, H04, H05, H19, H22, H34, H35 | audio-and-captions |
 | S007 No audio at all | Silent novel, board or puzzle | Skip H02–H37 (confirm no speech in any mode); C: R01, R12 if text | screen-reader-and-voice |
 | S008 Haptic information or force | Rumble calls, adaptive triggers, force-feedback wheel | C: N12, N13, N14; visual or audio equivalent | input-and-motor |
@@ -94,7 +94,7 @@ Assessing means checking. A silent game needs no subtitle menu, but you confirm 
 
 | Signal | Look for | Options | Guide |
 | --- | --- | --- | --- |
-| S033 Precise aiming | Raycasts, projectiles, headshots, small targets | C: D17, D18, V21, V22, V26; A: R17 | combat-aiming-stealth |
+| S033 Precise aiming | Raycasts, projectiles, headshots, small targets | C: D17, D18, V21, V22, V26, R17 | combat-aiming-stealth |
 | S034 Sway, recoil or reticle movement | Recoil curves, aim sway, breath hold | C: O03, D17, V21 | combat-aiming-stealth |
 | S035 Reload, swap or ammo management | Ammo counters, timed reload, empty-gun failure | C: D11, M15, M35, D16 | combat-aiming-stealth |
 | S036 Parry, dodge or perfect block | Frame windows, telegraph-and-counter | C: D16, M39, D15, C06, H34, D05 | combat-aiming-stealth, timing-and-speed |
@@ -251,9 +251,9 @@ just file names. Coverage beyond Grounded's spider changes is **UNVERIFIED** as 
 | Signal | Look for | Options | Guide |
 | --- | --- | --- | --- |
 | S146 Orders under a running simulation (RTS) | Economy ticks while you act, multi-front alerts | C: D14, D15, D27, M15, R03 | structured-ui-and-strategy, timing-and-speed |
-| S147 Turn or grid targeting | Hex or square board, legal-target overlay | C: M21, M32, C26, V25; A: R02 coordinates | structured-ui-and-strategy |
+| S147 Turn or grid targeting | Hex or square board, legal-target overlay | C: M21, M32, C26, V25, R02 (state and coordinates on demand) | structured-ui-and-strategy |
 | S148 Wave or preparation countdowns | Next-wave timer, auto-battler shop phase | C: D29, M32 | structured-ui-and-strategy |
-| S149 Card or deck state | Hand, deck, discard, nested effects | C: V01, V25, M32, C28, R07; A: R02 | structured-ui-and-strategy |
+| S149 Card or deck state | Hand, deck, discard, nested effects | C: V01, V25, M32, C28, R07, R02 | structured-ui-and-strategy |
 | S150 Construction, placement, gizmos | Snap grids, transform handles | C: M23, M32, C28, D27, V16 | structured-ui-and-strategy |
 | S151 Player-manipulated physics | Rigid bodies, force tools, unstable stacks | C: D14, D27, C28, D26, P05 | structured-ui-and-strategy |
 | S152 Day cycles, fishing, cooking | End-of-day collapse, fishing tension, timed recipes | C: D29, M15, D16, D25 | timing-and-speed |

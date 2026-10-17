@@ -118,7 +118,8 @@ reads the current value on creation, then subscribes.
 - `text.reveal`: `instant` shows the whole line at once; `fast` and `normal` animate. The first press
   during a reveal completes the line. The next press advances. Never skip an unread line.
 - `text.auto_advance` is off by default. Dialogue waits for the player. Text never silently expires.
-- Jitter, wobble and bouncing letters stop when `motion.reduce_motion` is on.
+- Jitter, wobble and bouncing letters stop when `motion.menu_animation` resolves to off (`off`, or
+  `follow` with `motion.reduce_motion` on).
 - Narration reads the complete line once. It never restarts per revealed character.
 
 ### HUD layout (V17, V18, V34)

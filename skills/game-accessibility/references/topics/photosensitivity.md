@@ -36,19 +36,31 @@ never justified by offering a reduced mode.
 - All full-screen flashes, strobes, lightning, hit flashes, muzzle flashes, explosion bursts, UI
   blinks, glitch effects and transitions call `FlashGuard.request_flash(intensity, area)`. No effect
   writes screen brightness directly.
-- **Rule in every mode:** for large or bright flashes, no more than **3 flashes in any 1-second
-  window and no more than 9 in any 5-second window**. Use sliding windows over real time, not
-  whole-second buckets. A flash is a pair of opposing changes (bright then dark).
+- **Counting rule (every engine sample uses it):** a request counts toward the budget if it covers
+  **≥ 25% of the screen**, **or** changes relative luminance by **≥ 0.1**, **or** is **saturated
+  red**. A request whose area or luminance change is unknown counts. Only a request known to be
+  below all three is exempt.
+- **Rule in every mode:** counted flashes are limited to **3 in any 1-second window and 9 in any
+  5-second window**. These are hard caps: configuration may lower them but never raise them. Use
+  sliding windows over real time, not whole-second buckets. A flash is a pair of opposing changes
+  (bright then dark).
 - The 5-second limit matters. Two or three flashes every second for five seconds stays under the
   1-second cap, yet EA IRIS treats 2–3 flashes per second for five consecutive seconds as an
   extended failure ([IRIS](https://github.com/electronicarts/IRIS)). The 5-second budget stops a
   sustained 2–3 Hz strobe.
-- Treat a flash as "large" when it covers a large part of the view. When unsure, count it. The budget
-  is **global**: two emitters that are each fine can combine into a hazard.
+- The 25%-of-screen and 0.1 thresholds are **conservative sample defaults**, not a WCAG
+  equivalence. Tune them only with evidence from footage analysis of the real effects. WCAG's
+  general-flash area is 25% of any 10° visual field, which it estimates as a 341 × 256 px
+  rectangle on a 1024 × 768 display: roughly 22,000 px, under 3% of that screen and far smaller
+  than 25% of the screen. A flash below the sample's area threshold can still be hazardous, so the
+  luminance and red tests apply on their own, unknown area always counts, and captured footage
+  remains the real check. The budget is **global**: two emitters that are each fine can combine
+  into a hazard.
 - Over budget: drop the request, or merge it into a held steady state. Never queue flashes to play
   later.
-- **Saturated red:** FlashGuard desaturates saturated-red flashes (one state with R/(R+G+B) ≥ 0.8)
-  in every mode, and counts them against the budget as large flashes.
+- **Saturated red:** FlashGuard desaturates saturated-red flashes (one state with R/(R+G+B) ≥ 0.8,
+  computed on linearised channel values as in WCAG's relative-luminance definition, not on encoded
+  sRGB values) in every mode, and always counts them against the budget whatever their area.
 - `motion.reduce_flashing` on: convert flashes to **steady, low-contrast fades**, a static edge tint,
   or a small icon change. Remove decorative flicker entirely. Keep the information: a hit still shows,
   a shot still reads, through a non-flashing cue.
@@ -182,8 +194,10 @@ consecutive seconds is an extended failure; harmful patterns lasting ≥ 0.5 s a
       bypass FlashGuard. Each one is routed or justified.
 - [ ] Unit test FlashGuard: 4 large requests within 1 s (sliding, across a second boundary) yield at
       most 3 flashes; a sustained 2–3 Hz sequence of large requests for 6 s yields at most 9 flashes
-      in any 5 s; saturated-red requests come out desaturated and count as large; reduce mode yields
-      no alternating changes. A passing unit test does not replace footage analysis.
+      in any 5 s; repeated small-area requests with a luminance change of 0.4 are also capped;
+      repeated small saturated-red requests come out desaturated and are capped; requests with
+      unknown area count; configured budgets above 3/9 are clamped; reduce mode yields no
+      alternating changes. A passing unit test does not replace footage analysis.
 - [ ] Fresh profile: capture from process launch through logos, menus and first gameplay. Analyse with
       the pinned tool. Record tool, version, configuration and capture metadata. No analyser run
       means this check is `blocked`; inspecting footage by eye is not a pass.

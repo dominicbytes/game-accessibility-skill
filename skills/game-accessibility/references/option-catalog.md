@@ -63,9 +63,9 @@ Guides: [text-and-readability](topics/text-and-readability.md), [color-and-clari
 | V23 | Protan / deutan / tritan palette presets | C | V | Colour carries meaning | Intended | `visual.color_profile` | Supplements V25; never claim a cure. |
 | V24 | Custom colours by semantic role | C | V | Teams, rarity, objectives | Intended | `visual.color_profile`, `visual.custom_colors` | Store per role (ColorTokens), not one global tint. |
 | V25 | Redundant symbols, labels or patterns | B | V,C | Colour-coded information | On | — | Meaning survives grayscale. Always shown, not a toggle. |
-| V26 | Enemy / ally outlines | C | V | Entities blend into scene | Intended | `visual.high_contrast` (outlines) | Tune visibility and colour separately. |
-| V27 | Interaction highlights | C | V,C | Hard-to-find usable objects | Intended | `visual.high_contrast` (outlines), `guidance.highlights` | Offer persistent and on-request choices. |
-| V28 | Platform / edge outlines | C | V | Visual navigation hazards | Intended | `visual.high_contrast` (outlines) | Do not hide landing geometry. |
+| V26 | Enemy / ally outlines | C | V | Entities blend into scene | Intended | `visual.outline_enemies`, `visual.outline_allies` (umbrella `visual.high_contrast`) | Tune visibility and colour separately. |
+| V27 | Interaction highlights | C | V,C | Hard-to-find usable objects | Intended | `visual.outline_interactables` (umbrella `visual.high_contrast`), `guidance.highlights` | Offer persistent and on-request choices. |
+| V28 | Platform / edge outlines | C | V | Visual navigation hazards | Intended | `visual.outline_hazards` (umbrella `visual.high_contrast`) | Do not hide landing geometry. |
 | V29 | Background dimming / foreground isolation | C | V,C | Visually complex scenes | Intended | `visual.background_dim` | Keep hazards and depth cues; separate from outlines. |
 | V30 | World-text readable overlay | C | V,C | Signs or documents drawn in art | Intended | `game.text.world_overlay` | Show equivalent text; avoid tiny baked lettering. |
 | V31 | Magnifier / zoom inspection | C | V | Detailed visual material | Intended | `game.visual.magnifier` | Pair with text scale; no forced camera motion. |
@@ -236,12 +236,12 @@ Guide: [sensory-load-and-guidance](topics/sensory-load-and-guidance.md).
 | N02 | HUD visibility by category | C | N,V | Cluttered HUD | Intended | `hud.mode` (`custom`), `hud.hidden_elements` | Not one all-or-nothing switch. |
 | N03 | Disable guiding paint / glows / trails | C | N | Persistent guidance visuals | Intended | `guidance.paint`, `guidance.trail` (overall: `guidance.level`) | Independent of journal and hazard cues. |
 | N04 | Guidance only on request | C | N,C | Visual overload | Intended | `guidance.highlights` (overall: `guidance.level`) | One remappable hint action. |
-| N05 | Static menu backgrounds | B | N,C | Decorative motion | Platform pref | `motion.reduce_motion` | Freeze video and particles; keep meaning. |
+| N05 | Static menu backgrounds | B | N,C | Decorative motion | Platform pref | `motion.menu_animation` (umbrella `motion.reduce_motion`) | Freeze video and particles; keep meaning. |
 | N06 | Reduce decorative detail | C | N,C | Dense non-interactive scenery | Intended | `effects.particle_density` | Keep collision, hazards and landmarks. |
 | N07 | Reduce particles / hit effects | C | N,V | Effects obscure play | Intended | `effects.particle_density` | Keep another hit cue. |
 | N08 | Reduce notification frequency | C | N,C | Repeated pop-ups | Intended | `notifications.mode` | Keep history and critical alerts. |
 | N09 | Disable autoplay previews | B | N,C,S | Moving media in UI | Platform pref | `game.ui.autoplay` | Separate control for autoplay sound. |
-| N10 | Disable UI transition animation | B | N,O | Animated UI | Platform pref | `motion.reduce_motion` | Instant or static; same hierarchy. |
+| N10 | Disable UI transition animation | B | N,O | Animated UI | Platform pref | `motion.menu_animation` (umbrella `motion.reduce_motion`) | Instant or static; same hierarchy. |
 | N11 | Disable decorative blinking / pulses | B | N,P | Attention effects | Safe: static critical cues | `game.ui.decorative_pulses` | Keep state through icon or text. |
 | N12 | Vibration intensity / off | C | N,M | Haptic output | Intended | `game.haptics.intensity` | Visual or audio equivalents remain. |
 | N13 | Haptics by event category | C | N,H,V | Useful and noisy vibration mixed | Intended | `game.haptics.categories` | Navigation cues independent of ambient rumble. |
@@ -281,21 +281,21 @@ Guides: [camera-and-motion](topics/camera-and-motion.md), [vr-and-xr](topics/vr-
 |---|---|---|---|---|---|---|---|
 | O01 | Camera shake intensity / off | C | O,N,P | Impact shake | Safe: reduced | `motion.camera_shake` | Must reach zero, scripted scenes included. |
 | O02 | Camera / head bob intensity / off | C | O | Walking oscillation | Safe: reduced | `motion.head_bob` | Cover sprint, crouch and scripted movement. |
-| O03 | Weapon sway / breathing motion | C | O | First-person equipment | Intended | `motion.head_bob` | Do not change aim precision by accident. |
+| O03 | Weapon sway / breathing motion | C | O | First-person equipment | Safe: reduced | `motion.weapon_sway` | Do not change aim precision by accident. |
 | O04 | Motion blur / off | C | O,V | Post-processing | Platform pref | `motion.motion_blur` | Per-object and full-screen blur. |
 | O05 | Field of view | C | O,V | Perspective camera | Intended (display-appropriate) | `motion.fov` | Label horizontal or vertical and aspect handling. |
 | O06 | Camera distance | C | O,V | Third-person view | Intended | `game.camera.distance` | Keep collision and objective visibility. |
 | O07 | Camera horizontal / vertical speed | C | O,M | Camera steering | Intended | `input.look_sensitivity` | Separate from movement sensitivity where useful. |
 | O08 | Camera smoothing / lag off | C | O,M | Delayed camera response | Intended | `game.camera.smoothing` | Keep response predictable. |
-| O09 | Automatic recentring off | C | O,M | Camera recentres itself | Intended | `motion.reduce_motion` | Manual recentre stays available. |
+| O09 | Automatic recentring off | C | O,M | Camera recentres itself | Intended | `motion.auto_camera` (umbrella `motion.reduce_motion`) | Manual recentre stays available. |
 | O10 | Disable scripted camera pulls | C | O,V | Game takes the camera | Intended | `game.camera.scripted_pulls` | Point the way with another cue. |
-| O11 | Disable automatic camera rotation | C | O | Turns without player input | Safe: reduced | `motion.reduce_motion` | Voluntary turning stays. |
+| O11 | Disable automatic camera rotation | C | O | Turns without player input | Safe: reduced | `motion.auto_camera` (umbrella `motion.reduce_motion`) | Voluntary turning stays. |
 | O12 | Stable horizon / reduced roll | C | O | Vehicle or world tilt | Intended | `game.camera.horizon_lock` | Keep essential orientation information. |
-| O13 | Disable sprint / aim dynamic FOV | C | O | Zooming perspective | Intended | `motion.reduce_motion` | Separate aim magnification if needed. |
-| O14 | Disable speed lines / radial blur | C | O,N | Simulated speed effects | Intended | `motion.reduce_motion` | Show speed another way. |
+| O13 | Disable sprint / aim dynamic FOV | C | O | Zooming perspective | Intended | `motion.fov_effects` (umbrella `motion.reduce_motion`) | Separate aim magnification if needed. |
+| O14 | Disable speed lines / radial blur | C | O,N | Simulated speed effects | Intended | `motion.speed_lines` (umbrella `motion.reduce_motion`) | Show speed another way. |
 | O15 | Disable chromatic aberration / distortion | C | O,V | Lens effects | Intended | `motion.chromatic_aberration`, `motion.screen_effects` (distortion) | Damage and cutscenes too. |
 | O16 | Stable screen-centre marker | C | O | Moving perspective | Intended | `game.camera.center_dot` | Separate from the weapon reticle. |
-| O17 | Reduce parallax / background scrolling | C | O,N | Layered movement | Platform pref | `motion.reduce_motion` | Keep foreground navigation movement. |
+| O17 | Reduce parallax / background scrolling | C | O,N | Layered movement | Platform pref | `motion.parallax` (umbrella `motion.reduce_motion`) | Keep foreground navigation movement. |
 | O18 | VR teleport or smooth movement | C | O,M | Artificial locomotion | Intended (comfort-oriented) | `game.xr.locomotion` | Same destinations and progression. |
 | O19 | VR snap turning / angle | C | O,M | Artificial rotation | Intended (comfort-oriented) | `game.xr.turn_mode` | Smooth turning remains available. |
 | O20 | VR comfort vignette | C | O | Artificial movement | Intended | `game.xr.vignette` | Adjustable strength; never hides essential cues. |
@@ -321,9 +321,9 @@ Guide: [content-and-phobias](topics/content-and-phobias.md).
 | F08 | Nudity filter | C | F,S | Sensitive imagery | Intended | `game.content.nudity` | Same progression and scene meaning. |
 | F09 | Profanity filter | C | F,S | Spoken or written language | Intended | `game.content.profanity` | Captions and audio agree. |
 | F10 | Needle / medical imagery replacement | C | F,T | Medical procedures | Intended | `game.content.needles` | Set before the scene; no exposed preview. |
-| F11 | Jump-scare reduction / warning | C | F,T,N | Sudden scares | Intended | `content.jump_scares` | Independent of threat difficulty. |
+| F11 | Jump-scare reduction / warning | C | F,T,N | Sudden scares | Intended | `content.jump_scares`, `content.scare_warnings` | Reduction and warning are separate choices; independent of threat difficulty. |
 | F12 | Detailed content notices | C | F,T | Sensitive themes | On (before purchase and start) | `content.warnings` | Layer summary and detail so players pick spoiler depth. |
-| F13 | Opt-in pre-scene warnings | C | F,T | A specific upcoming trigger | Intended (or chosen at setup) | `content.warnings`, `content.jump_scares` | Warnings come before the content and are accessible. |
+| F13 | Opt-in pre-scene warnings | C | F,T | A specific upcoming trigger | Intended (or chosen at setup) | `content.warnings`, `content.scare_warnings` | Warnings come before the content and are accessible. |
 | F14 | Sensitive scene / mission skip | C | F,T | Unavoidable triggering sequence | Intended | `content.scene_skip` | Keep rewards and progress; optional factual recap. |
 | F15 | Clustered-hole (trypophobia) texture alternatives | C | F,N | Organic hole patterns, nests, pores, honeycomb surfaces | Intended | game.content_holes | Swap textures, normal maps and decals; check walls and floors, not just creatures. |
 
@@ -353,7 +353,7 @@ Guides: [difficulty-and-assists](topics/difficulty-and-assists.md), [timing-and-
 | D14 | Game speed | C | M,C | Real-time demands | Intended | `assist.game_speed` | Menus, captions and narration unaffected. |
 | D15 | On-demand slow motion | C | M,C | Short reaction bursts | Intended | `game.assist.slow_motion` | Remappable; toggle option. |
 | D16 | Extended reaction / parry timing | C | M,C | Precise windows | Intended | `input.timing_window_scale` | Show success through several channels. |
-| D17 | Aim assist strength | C | M,V | Precision aiming | Intended | `input.aim_assist` | Slowdown and pull only; range and strength; state multiplayer rules. |
+| D17 | Aim assist strength | C | M,V | Precision aiming | Intended | `input.aim_assist` (slowdown), `input.aim_pull`, `input.aim_stabilization` | Separate slowdown, pull and stabilisation; range and strength; state multiplayer rules. |
 | D18 | Target lock / automatic aim | C | M,V | Persistent tracking | Intended | `input.target_lock` | Player can select and release targets. |
 | D19 | Steering / braking assist | C | M,C | Continuous vehicle control | Intended | `game.assist.steering` | Independent assists, not a bundle (see `game.assist.braking`). |
 | D20 | Jump / landing assist | C | M,V | Precision traversal | Intended | `game.assist.landing` | Keep the player's destination choice. |

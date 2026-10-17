@@ -13,12 +13,12 @@ aiming belong in [structured-ui-and-strategy](structured-ui-and-strategy.md).
 
 | ID | Option | Setting key | Default | Tier | Helps |
 |----|--------|-------------|---------|------|-------|
-| D17 | Aim assist: slowdown near targets, gentle pull, stabilised reticle, reduced recoil and sway | `input.aim_assist` | 0.0 | C | M, V |
+| D17 | Aim assist: slowdown near targets, gentle pull, stabilised reticle, reduced recoil and sway | `input.aim_assist` (slowdown), `input.aim_pull`, `input.aim_stabilization` | 0.0 each | C | M, V |
 | D18 | Target lock, snap and target cycling with easy release | `input.target_lock` | false | C | M, V |
 | M15 | Auto-fire and auto-repeat attacks; auto-reload when safe | `input.mash_mode` or a per-weapon auto-fire key | Off | C | M |
 | D16 | Wider parry, dodge and takedown windows | `input.timing_window_scale` | 1.0 | C | M, C |
 | H34 | Off-screen threat and sound direction indicators | `audio.sound_visualizer` | false | C | H, V |
-| V26 | Enemy and ally outlines | `visual.high_contrast` | false | C | V |
+| V26 | Enemy and ally outlines | `visual.outline_enemies`, `visual.outline_allies` (umbrella `visual.high_contrast`) | `follow` | C | V |
 | M19 | Combo simplification, auto-combo, ability shortcuts | `game.input.macros` | Off | C | M, C |
 | D06 | Enemy health and outgoing damage | `game.assist.damage_dealt` | 1.0 | C | M, T |
 | D09 | Enemy aggression, simultaneous attackers, projectile speed, detection speed | `assist.enemy_aggression` | 1.0 | C | T, M, C |
@@ -36,16 +36,19 @@ Grab and struggle inputs use `input.mash_mode` and `input.qte_mode` from
 
 ### Aim assistance (D17, D18)
 
-Split assistance into parts the player can feel separately. `input.aim_assist` (0–1) is the
-strength of slowdown and pull only. `input.target_lock` is a separate on/off key: a player can use
-lock-on with no pull, or pull with no lock-on.
+Split assistance into parts the player can feel and set separately. Each part has its own key and
+its own 0–1 strength, with 0 meaning off; no part switches on because another slider passed a
+threshold. A player can use pull with no slowdown, stabilisation alone, or lock-on with no pull.
 
-| Part | What it does | Key and mapping (suggested) |
-|------|--------------|-----------------------------|
-| Slowdown (friction) | Reticle moves slower over a target | `input.aim_assist` from 0.25 |
-| Pull (magnetism) | Reticle drifts toward a nearby target | `input.aim_assist` from 0.5 |
-| Stabilisation | Smooths small input jitter and reduces gameplay recoil and sway | `input.aim_assist` from 0.5, or a project key |
-| Lock-on | Holds a target until released; next/previous target; release on any deliberate look input | `input.target_lock` |
+| Part | What it does | Key |
+|------|--------------|-----|
+| Slowdown (friction) | Reticle moves slower over a target | `input.aim_assist` (0–1) |
+| Pull (magnetism) | Reticle drifts toward a nearby target | `input.aim_pull` (0–1) |
+| Stabilisation | Smooths small input jitter and reduces gameplay recoil and sway | `input.aim_stabilization` (0–1) |
+| Lock-on | Holds a target until released; next/previous target; release on any deliberate look input | `input.target_lock` (on/off) |
+
+The "Reduced physical effort" preset sets several of these together as an editable patch; each key
+stays adjustable afterward.
 
 - Apply to **every mandatory target**: weak points, switches, puzzle targets, thrown items. Help that
   only works on enemies leaves a tiny puzzle target blocking progress.
@@ -63,8 +66,10 @@ lock-on with no pull, or pull with no lock-on.
 
 ### Parry, dodge and perfect block (D16, S036)
 
-- Use `InputAssist.timing_window(base)` at the check. Do not stack with game speed (see
-  [timing-and-speed](timing-and-speed.md)).
+- Use `InputAssist.timing_window(base)` at the check. Apply the window multiplier once, in
+  simulation time; deliberate game slowdown (`assist.game_speed`) also lengthens real time. The
+  window lasts `real = base × window_scale / time_scale` seconds. Never scale it again by
+  `time_scale` or measure it in real time (see [timing-and-speed](timing-and-speed.md)).
 - Telegraph every attack through at least two channels: a shape or animation cue, a sound sent
   through `CaptionBus`, and optional haptics. A flash-only telegraph also needs
   [photosensitivity](photosensitivity.md) review.
@@ -160,9 +165,11 @@ through `should_fail`.
 
 ## Verify
 
-- [ ] Clear a mandatory fight with aim assist at 1.0 using one-handed input. Lock-on cycles and
-      releases. Puzzle and weak-point targets accept assisted aim.
-- [ ] Target lock on with aim assist 0, and aim assist 1.0 with target lock off: each works alone.
+- [ ] Clear a mandatory fight with slowdown, pull and stabilisation at 1.0 using one-handed input.
+      Lock-on cycles and releases. Puzzle and weak-point targets accept assisted aim.
+- [ ] Set each of `input.aim_assist`, `input.aim_pull`, `input.aim_stabilization` and
+      `input.target_lock` on alone with the others at 0 or off: each works alone and the others
+      stay inactive. Then try pull with stabilisation, and lock-on with slowdown.
 - [ ] Reduced motion + lock-on: the camera does not swing; a target marker shows the lock.
 - [ ] Boundary parry input that fails at 1x succeeds at the configured window scale.
 - [ ] Play muted: every off-screen attack and every detection state change is visible.
@@ -180,6 +187,8 @@ through `should_fail`.
 - Aim assist that only helps against enemies → include every required target.
 - Lock-on with no release or cycling → keep target choice with the player.
 - Lock-on only at maximum aim-assist strength → give it its own key (`input.target_lock`).
+- Pull or stabilisation that switches on when the slowdown slider passes a threshold → each part
+  has its own key (`input.aim_pull`, `input.aim_stabilization`).
 - Stealth state shown only as a colour ring or a sting → add shape, label and sound.
 - Combat damage Off, but detection still fails the mission → route detection through
   `should_fail` with its own option.

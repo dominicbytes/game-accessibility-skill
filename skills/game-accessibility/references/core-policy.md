@@ -58,10 +58,12 @@ code**. Tell them plainly:
   achievements for that tells them they are playing the game wrong, or are not welcome in it.
 - **It makes players stop playing.** A player who sees achievements switch off, or has to choose
   between the option they need and the rewards everyone else gets, is likely to quit instead.
-- **Worst case, they refund it.** Players meet this in the settings menu or the first hours of play.
-  On Steam, that is inside the refund window: [any reason, within 14 days of purchase and under
-  2 hours of playtime](https://store.steampowered.com/steam_refunds/). The same players are also
-  the ones who write reviews and accessibility round-ups.
+- **Worst case, they refund it.** A penalty can lead to refund requests. Steam's standard refund
+  covers a request made [within 14 days of purchase **and** with under 2 hours of
+  playtime](https://store.steampowered.com/steam_refunds/), and many players meet assist options in
+  the settings menu or early play, which is often inside that window. Requests outside those terms
+  can still be reviewed, but nothing guarantees approval either way. The same players are also the
+  ones who write reviews and accessibility round-ups.
 - **It is not needed.** Achievements that read events are already earned by playing. Control and
   Dead Cells keep all achievements with assists on (see the difficulty guide).
 
@@ -77,7 +79,7 @@ accessible, and never add the penalty silently or without the warning.
 | --- | --- | --- |
 | Photosensitivity | Content contains **no hazardous flashing in any mode**, including logos, menus, transitions and video. A warning screen is not a mitigation. "Reduce flashing" removes even non-hazardous flashes. | Seizure risk exists before any menu can be opened. |
 | First-launch audio | Quiet master level. Music starts **after** volume is reachable and fades in. The only sound allowed before settings is one quiet, repeatable prompt offering spoken menus. | Surprise loudness hurts and startles; blind players still need an audible way in. |
-| Camera shake / head bob | Moderate ("Reduced") unless the designer explicitly chooses otherwise. Full Off always exists. | Common motion-sickness trigger. |
+| Camera shake / head bob / weapon sway | Moderate ("Reduced") unless the designer explicitly chooses otherwise. Full Off always exists. | Common motion-sickness trigger. |
 | Settings access | Accessible settings are reachable **before** logos, intro video, music, tutorial and first speech. | The remedy must come before the barrier. |
 | OS preferences | Honour supported system settings (reduce motion, screen reader active, increase contrast, caption style, text size) as the *initial* value. An explicit player choice always overrides them. | The player already told the device what they need. |
 | Subtitles | Dialogue subtitles **On** by default, unless the designer decides otherwise, and offered on first launch either way. | Large share of players use them. Cheap. |
@@ -109,6 +111,11 @@ accessible, and never add the penalty silently or without the warning.
   time to respond", "Readable text", "Reduced physical effort", "Lower combat pressure", "More
   navigation help") are **editable patches**. They show exactly what they change, can be undone,
   and never overwrite a value the player set by hand on a later launch.
+- **Umbrella controls never remove separate control.** An "all" switch such as "Reduce motion
+  (all)" or "High-contrast outlines (all)" is an editable patch over its parts. Each part keeps its
+  own persistent key whose default `follow` uses the umbrella and whose `on` or `off` overrides it,
+  so the player can always set each effect or class separately (see
+  [architecture.md](architecture.md) section 1). Never ship only the umbrella for distinct effects.
 - Name presets by **what they do**, not by diagnosis. Never ask a player to disclose a disability.
 - Options that pull in opposite directions coexist: guidance off **and** objective journal on;
   minimal HUD **and** captions on; reduced motion **and** camera assist. Test those combinations.

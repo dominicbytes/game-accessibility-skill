@@ -14,6 +14,8 @@
 
 - All options are optional, reversible at any time, and available before the barrier they address.
 - No achievement, trophy, unlock, ending, grade or save is changed or marked by any option.
+- Every option is set independently. An "all" control (reduce motion, outlines) is an editable
+  patch; each part it covers keeps its own setting.
 - Safe defaults: no hazardous flashing in any mode; quiet first-launch audio; settings before logos,
   music and speech; reduced camera shake; OS accessibility preferences respected.
 - Wording describes effects, never shames. Claims match verified behaviour.

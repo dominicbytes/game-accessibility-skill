@@ -19,7 +19,7 @@ the barrier, and never touch achievements or saves.
 
 ## 2. Add the module
 
-1. Copy `engines/unreal/Source/GameAccessibility/` to `<Project>/Source/GameAccessibility/`.
+1. Copy `engines/unreal/Source/GameAccessibility/` to `<Project>/Source/GameAccessibility/`. Keep the skill's `LICENSE` file (MIT) with the copied code.
 2. Copy `engines/unreal/Resources/settings_registry.json` to
    `<Project>/Config/Accessibility/settings_registry.json`. Delete entries the game does not need
    (see `ACCESSIBILITY.md`). `GameAccessibility.Build.cs` stages this file into packaged builds as a
@@ -41,16 +41,16 @@ Prefer a plugin? Wrap the module in your own `.uplugin` and point `GetRegistryPa
 
 | Contract service | Class | Notes |
 | --- | --- | --- |
-| A11ySettings | `UA11ySettingsSubsystem` (GameInstance) | Typed get/set (bool, float, int, enum, string), `OnSettingChanged` (BlueprintAssignable), explicit-set tracking, `ApplyPreset`/`UndoLastPreset`, `ResetCategory`, OS-pref import stub |
-| AssistPolicy | `UA11yAssistPolicy` (function library) | `DamageToPlayer`, `ShouldFail`, `Consume`, `TimerScale`, `TimeScale`, `EnemyAggression`, `RequestSkip`, plus `EncounterRate`, `IsAutoBattleOn`, `BattleAnimationSpeed` |
-| InputAssist | `UA11yInputAssistComponent` | Toggle latch, mash modes, QTE modes, `TimingWindow` |
-| FlashGuard | `UA11yFlashGuardSubsystem` | Counted flashes: no more than 3 in any 1 s and no more than 9 in any 5 s (real time), in every mode; red desaturated in every mode |
-| CameraComfort | `UA11yCameraComfortComponent` | Shake, head bob, FOV, motion blur, chromatic aberration, vignette |
-| CaptionBus | `UA11yCaptionSubsystem` | `FA11yCaptionEvent`, `OnCaption` for UMG; fires even when muted |
-| Narrator | `UA11yNarrationSubsystem` + `IA11yNarrationBackend` | Bounded priority queue; you bind the TTS backend |
+| A11ySettings | `UA11ySettingsSubsystem` (GameInstance) | Typed get/set (bool, float, int, enum, string), `OnSettingChanged` (BlueprintAssignable), explicit-set tracking, `ApplyPreset`/`UndoLastPreset`, `ResetCategory`, OS-pref import stub, `ResolveToggle(Key, bFollowValue)` for `follow`/`off`/`on` override keys |
+| AssistPolicy | `UA11yAssistPolicy` (function library) | `DamageToPlayer`, `ShouldFail`, `Consume`, `TimerScale`, `TimeScale`, `EnemyAggression`, `RequestSkip` (challenges, `assist.skip_available`), `RequestSceneSkip` (sensitive scenes, `content.scene_skip`), `ClearSkipRequest`, `AreJumpScaresReduced`, `AreScareWarningsOn`, plus `EncounterRate`, `IsAutoBattleOn`, `BattleAnimationSpeed` |
+| InputAssist | `UA11yInputAssistComponent` | Toggle latch, mash modes, QTE modes, `TimingWindow`, aim slowdown / pull / stabilisation strengths (three keys) |
+| FlashGuard | `UA11yFlashGuardSubsystem` | A request counts if area ≥ 0.25 **or** intensity ≥ 0.1 **or** saturated red. Counted flashes: no more than 3 in any 1 s and no more than 9 in any 5 s (real time), in every mode, clamped whatever the configuration. Saturated red always desaturated; `IsSaturatedRed` tests linear colour |
+| CameraComfort | `UA11yCameraComfortComponent`, `UA11yDepthOfFieldSubsystem` | Shake, head bob and weapon sway (separate keys), FOV, motion blur, chromatic aberration, vignette, depth of field; `IsMotionEffectEnabled` for the per-effect motion overrides |
+| CaptionBus | `UA11yCaptionSubsystem` | `FA11yCaptionEvent`, `OnCaption` for UMG; fires even when muted. Your view paginates; it never clips |
+| Narrator | `UA11yNarrationSubsystem` + `IA11yNarrationBackend` | Bounded priority queue; menu speech and dialogue reading stop independently when their settings turn off; you bind the TTS backend |
 | GuidanceLayer | `UA11yGuidanceComponent` | Per-channel key with `follow` → `guidance.level`; hazard flag; child visibility |
-| ContentFilter | `UA11yContentVariantComponent` | Child variants tagged `A11yVariant.<value>` |
-| ColorTokens | `UA11yColorTokens` (DataAsset), `UA11yColorLibrary` | `custom` profile reads `visual.custom_colors`; optional CVD filter helper |
+| ContentFilter | `UA11yContentVariantComponent` | Child variants tagged `A11yVariant.<value>`; never falls back below the requested level |
+| ColorTokens | `UA11yColorTokens` (DataAsset), `UA11yColorLibrary` | `custom` profile reads `visual.custom_colors`; `ShouldOutline` resolves `visual.outline_*` over `visual.high_contrast`; optional CVD filter helper |
 
 Every component reads the current value in `BeginPlay`, then subscribes. Gameplay code asks the policy
 and never reads raw keys.
@@ -79,26 +79,61 @@ soft-lock.
 **Timers, game speed, skips.** A countdown subtracts `DeltaSeconds / UA11yAssistPolicy::TimerScale(this)`
 and stops when `AreTimersDisabled`. For game speed, `UGameplayStatics::SetGlobalTimeDilation(this,
 UA11yAssistPolicy::TimeScale(this))` dilates world time. Verify that menus, UI animation, subtitle
-timing and audio are not slowed in your setup (UNVERIFIED in general). For skips, bind `OnChallengeSkipRequested` on the challenge owner and call the same
-`CompleteChallenge()` that winning calls.
+timing and audio are not slowed in your setup (UNVERIFIED in general).
+
+**Skips: two options, one completion path.** A puzzle, chase or challenge calls
+`UA11yAssistPolicy::RequestSkip(this, ChallengeId)`, gated only by `assist.skip_available`. A sensitive
+scene listed in the content notices calls `UA11yAssistPolicy::RequestSceneSkip(this, SceneId)`, gated
+only by `content.scene_skip`. It works with challenge skips turned off or with `assist.skip_available`
+absent from the registry. Both broadcast the same `OnChallengeSkipRequested` on
+`UA11ySettingsSubsystem`. Bind it on the owner and call the same `CompleteChallenge()` that winning
+calls (same flags, items, checkpoint, achievements; a scene adds its optional factual recap). The path is
+idempotent: a repeat for the same Id, through either function, returns true without a second broadcast.
+Call `UA11yAssistPolicy::ClearSkipRequest(this, Id)` when the challenge or scene can be played again.
+Test all four combinations of the two keys, and a registry containing only `content.scene_skip`.
+
+**Scares.** `content.jump_scares` is `full`/`reduced` (`AreJumpScaresReduced`); `content.scare_warnings`
+is a separate bool (`AreScareWarningsOn`). Any combination is valid, including full scares with
+warnings. Flashes inside a scare still go through FlashGuard.
 
 **Camera shake.** Replace `PlayerCameraManager->StartCameraShake(Class, Scale)` with
 `CameraComfort->PlayCameraShake(Class, Scale)`. Every tick, the component also rescales the other
 active shakes on the camera manager: it reads `UCameraModifier_CameraShake::GetActiveCameraShakes` and
 writes `UCameraShakeBase::ShakeScale`. That covers `UCameraShakeSourceComponent`,
 `PlayWorldCameraShake` and, if they run through the camera manager, Sequencer shakes. Check a cutscene
-shake at 0%. List head-bob shake classes in `HeadBobShakeClasses`. Procedural bob multiplies by
-`GetHeadBobScale()`.
+shake at 0%. List head-bob shake classes in `HeadBobShakeClasses` (`motion.head_bob`) and weapon
+sway or breathing classes in `WeaponSwayShakeClasses` (`motion.weapon_sway`). They are separate keys.
+Procedural bob multiplies by `GetHeadBobScale()`, procedural sway by `GetWeaponSwayScale()`. Sway is
+visual only, so never change aim accuracy with it.
 
 **Post-process and FOV.** Author motion blur, chromatic aberration (`SceneFringeIntensity`) and
 vignette on the **camera's** post-process settings. The component captures those authored values and
 overrides each from its own key: `motion.motion_blur`, `motion.chromatic_aberration`,
 `motion.screen_effects` (vignette) and `motion.depth_of_field`. Depth of field uses
 `DepthOfFieldEnabled` when you define `A11Y_UE_HAS_DOF_ENABLED=1` (only listed in newer API docs).
-Otherwise it falls back to the global `r.DepthOfFieldQuality` cvar. Damage overlays and distortion in
+Otherwise it falls back to the global `r.DepthOfFieldQuality` cvar, owned by
+`UA11yDepthOfFieldSubsystem` (GameInstance, so it survives level changes). Each component holds at
+most one "off" request. The subsystem captures the authored quality at the first request and
+restores it when the last request is released, so Off → level change → On restores the authored
+quality, and overlapping components stay balanced. Route your graphics menu's DOF quality through
+`SetAuthoredQuality`. Damage overlays and distortion in
 UMG multiply by `GetScreenEffectsScale()`. `motion.fov` is vertical degrees. UE's `FieldOfView` is
 horizontal under the default `AspectRatio_MaintainXFOV`, so the component converts with the viewport
 aspect. Call `ApplyNow()` after a resize.
+
+**Motion overrides and outlines (`follow` keys).** Some keys are `follow`/`off`/`on` overrides of an
+umbrella. `UA11ySettingsSubsystem::ResolveToggle(Key, bFollowValue)` returns true for `on`, false for
+`off`, and `bFollowValue` for `follow` or a key the game removed from its registry.
+
+```cpp
+// Motion: motion.auto_camera, motion.fov_effects, motion.speed_lines, motion.parallax, motion.menu_animation.
+// "follow" resolves to !motion.reduce_motion.
+if (UA11yCameraComfortComponent::IsMotionEffectEnabled(this, TEXT("motion.fov_effects"))) { StartSprintFovPulse(); }
+// Outlines: visual.outline_enemies / _allies / _interactables / _hazards. "follow" uses visual.high_contrast.
+EnemyMesh->SetRenderCustomDepth(UA11yColorLibrary::ShouldOutline(this, TEXT("visual.outline_enemies")));
+```
+
+Re-evaluate when `OnSettingChanged` reports the override key **or** its umbrella key.
 
 **QTE and mashing (Enhanced Input).**
 
@@ -136,12 +171,19 @@ GetGameInstance()->GetSubsystem<UA11yCaptionSubsystem>()->PostCaption(E);   // e
 ```
 
 The UMG view binds `OnCaption` and uses `Routing.TextScale`/`BackgroundOpacity`. Show at most 2 lines
-of about 40 characters inside the safe zone.
+of about 40 characters per page, inside the safe zone. **Never clip or truncate the text** (no
+`Clipping` or max-line limit that hides words). Split the full line into pages, show them in order for
+the event's duration (or advance on input), and re-paginate when the viewport, `text.scale` or
+`subtitles.size` changes. Test a long translated line at 200% subtitle size on the smallest supported
+viewport, and check that every word is eventually shown.
 
 **Enemy variants.** Put a `UA11yContentVariantComponent` (key `content.spiders`) under the spider's
 root, with child meshes tagged `A11yVariant.0` to `A11yVariant.3`. Use separate components for
 `content.blood` and `content.gore`. They are independent keys. Keep collision, hitbox and AI on the
-actor. Swap sounds and portraits in `OnVariantChanged`, and cover icons and bestiary entries too.
+actor. Swap sounds and portraits in `OnVariantChanged`, and cover icons and bestiary entries too. If
+the requested variant is missing, the component shows the nearest **more** filtered one and never falls
+back below the requested level. If none exists it hides every variant and reports an empty
+`ActiveVariant`, so author full coverage, or a neutral stand-in tagged with the highest level.
 
 **Guidance.** Parent paint decals under a `UA11yGuidanceComponent` with `Channel = guidance.paint`,
 trails under one with `guidance.trail`, and highlights under one with `guidance.highlights`. Each
@@ -157,9 +199,15 @@ const FA11yFlashResult R = GetGameInstance()->GetSubsystem<UA11yFlashGuardSubsys
 if (R.Style != EA11yFlashStyle::Suppressed) { StartFlash(R.Intensity, FMath::Max(R.MinFadeSeconds, AuthoredFade), R.bDesaturate); }
 ```
 
-Lightning, muzzle flashes, hit flashes and UI transitions all go through it. The thresholds are
-heuristics. FlashGuard cannot see flashes baked into video, textures or overlapping shaders, so analyse
-captured footage as well (section 8).
+Lightning, muzzle flashes, hit flashes and UI transitions all go through it. **Counting rule:** a
+request counts toward the budgets if `ScreenArea >= 0.25` **or** `Intensity >= 0.1` **or**
+`bSaturatedRed`. A small flash with moderate brightness (area 0.09, intensity 0.4) still counts. Pass
+area 1 when you do not know it. The thresholds (`LargeAreaFraction`, `BrightIntensityThreshold`) are
+conservative sample defaults. Tune them only with evidence from captured-output analysis. The budgets
+are clamped to at most 3 per 1 s and 9 per 5 s whatever you configure. Saturated red is always
+desaturated. Classify it with `UA11yFlashGuardSubsystem::IsSaturatedRed(FLinearColor)`, which tests
+R/(R+G+B) ≥ 0.8 on **linear** channels. FlashGuard cannot see flashes baked into video, textures or
+overlapping shaders, so analyse captured footage as well, as a separate gate (section 8).
 
 ## 5. Remapping: Enhanced Input User Settings (5.3+)
 
@@ -212,7 +260,11 @@ captured footage as well (section 8).
   with `UTextToSpeechEngineSubsystem`: `AddDefaultChannel`, `ActivateChannel`, `SpeakOnChannel`,
   `StopSpeakingOnChannel`, `IsSpeakingOnChannel`, `SetRateOnChannel` (clamped 0-1). The full TODO is in
   `A11yNarration.h`. Call `SetNativeScreenReaderActive(true)` when the native route speaks focus, so
-  nothing is spoken twice.
+  nothing is spoken twice. This also drops self-voiced focus speech that is already queued or playing.
+- **Turning narration off stops it.** The queue subscribes to `OnSettingChanged`. Turning
+  `narration.enabled` off stops the current menu/focus utterance and discards queued menu speech.
+  Dialogue reading (`narration.dialogue`) is independent: it keeps going, and turning it off stops only
+  dialogue. Every queued item is re-checked (setting and route) just before dispatch.
 - **Test packaged/Standalone builds on each target.** TTS has behaved differently in Play In Editor
   (UE-161327), and the export target decides the backend.
 
@@ -238,7 +290,19 @@ this MIT module or your MIT code**, and do not import the shooter framework to g
       and 21:9.
 - [ ] Captions appear with SFX volume at 0. A looping alarm is captioned once.
 - [ ] A strobe sequence never produces more than 3 counted flashes in 1 s or more than 9 in 5 s. A
-      steady 2.5 Hz strobe is cut off. Reduce flashing turns it into soft fades.
+      steady 2.5 Hz strobe is cut off. Reduce flashing turns it into soft fades. Repeated small
+      moderate flashes (area 0.09, intensity 0.4) and small saturated-red flashes are limited too.
+      Setting the budgets to 10 and 30 still enforces 3 and 9.
+- [ ] Depth of field Off → level change → On restores the authored quality. Two camera components
+      overlapping keep DOF off until both have released it.
+- [ ] Head bob 0 leaves weapon sway as set, and the reverse. `motion.reduce_motion` on with
+      `motion.fov_effects = on` keeps FOV effects. Outlines follow `visual.high_contrast` unless a
+      class is set to `on` or `off`.
+- [ ] A scene skip works with `assist.skip_available` off, and a challenge skip works with
+      `content.scene_skip` off. A double request completes the challenge once.
+- [ ] Turning menu narration off mid-utterance stops it and drops the queue; dialogue reading
+      continues.
+- [ ] A long translated subtitle at 200% size is paginated; no word is clipped.
 - [ ] The toggle latch clears on pause, alt-tab and controller unplug. QTE auto mode uses the success
       branch.
 - [ ] Spider variant 3 is visible on the first frame, and the hitbox is unchanged.

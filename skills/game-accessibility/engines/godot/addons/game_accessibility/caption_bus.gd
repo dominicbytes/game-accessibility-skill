@@ -71,7 +71,7 @@ func post(event: A11yCaptionEvent) -> void:
 		if not routed.speaker.is_empty():
 			line = "%s: %s" % [tr(routed.speaker), line]
 		var priority: A11yNarrator.Priority = A11yNarrator.Priority.HIGH if routed.importance == A11yCaptionEvent.Importance.CRITICAL else A11yNarrator.Priority.NORMAL
-		narrator.speak(line, priority, false, "")
+		narrator.speak_dialogue(line, priority)
 
 
 ## Direction of [param world_position] relative to a listener transform (forward is -Z).

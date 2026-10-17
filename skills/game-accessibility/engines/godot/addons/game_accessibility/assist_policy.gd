@@ -134,22 +134,37 @@ static func battle_speed() -> float:
 
 
 ## Whether scenes listed in the content notices may be skipped (with a short text summary).
+## Follows content.scene_skip only; independent of the challenge skip.
 static func scene_skip_offered() -> bool:
 	var store: A11ySettings = _store()
 	return store != null and store.get_bool("content.scene_skip", true)
 
 
-## Whether the pause menu should offer "Skip challenge".
+## Whether the pause menu should offer "Skip challenge". Follows assist.skip_available only.
 static func skip_offered() -> bool:
 	var store: A11ySettings = _store()
 	return store != null and store.get_bool("assist.skip_available", true)
 
 
-## Requests a skip. Emits [signal A11ySettings.skip_requested]; the challenge completes through its
-## normal success path (same rewards, flags, achievements and checkpoint). Returns false when skips
-## are not offered or there is no store.
+## Requests a challenge skip (puzzle, chase, boss), gated on assist.skip_available. Emits
+## [signal A11ySettings.skip_requested] once per id; the challenge completes through its normal
+## success path (same rewards, flags, achievements and checkpoint). A repeated request for an id that
+## was already skipped returns true without emitting again. Returns false when challenge skips are
+## not offered or there is no store.
 static func request_skip(challenge_id: String) -> bool:
 	if not skip_offered():
 		return false
 	_store().emit_skip_requested(challenge_id)
+	return true
+
+
+## Requests a sensitive-scene skip (a scene listed in the content notices), gated on
+## content.scene_skip, never on assist.skip_available. Reaches the same
+## [signal A11ySettings.skip_requested] signal and completion path as [method request_skip], once
+## per id. Show the scene's short text summary before continuing. Returns false when scene skips are
+## not offered or there is no store.
+static func request_scene_skip(scene_id: String) -> bool:
+	if not scene_skip_offered():
+		return false
+	_store().emit_skip_requested(scene_id)
 	return true

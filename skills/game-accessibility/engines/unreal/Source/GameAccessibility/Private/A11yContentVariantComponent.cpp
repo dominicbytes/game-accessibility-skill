@@ -144,7 +144,14 @@ void UA11yContentVariantComponent::Refresh()
 		}
 	}
 
-	const FString Chosen = ChooseVariant(Settings->GetValueAsString(SettingKey), Authored);
+	const FString Requested = Settings->GetValueAsString(SettingKey);
+	const FString Chosen = ChooseVariant(Requested, Authored);
+	if (Chosen.IsEmpty() && Authored.Num() > 0)
+	{
+		// Never fall back below the requested level: keep the presentation hidden and report the gap.
+		UE_LOG(LogA11y, Warning, TEXT("%s: no variant at or above %s=%s is authored; all variants hidden."),
+			*GetPathName(), *SettingKey.ToString(), *Requested);
+	}
 	for (USceneComponent* Child : Children)
 	{
 		FString Value;

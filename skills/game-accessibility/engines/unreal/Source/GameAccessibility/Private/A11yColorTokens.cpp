@@ -90,6 +90,16 @@ FLinearColor UA11yColorLibrary::ResolveTokenColor(const UObject* WorldContextObj
 	return Palette->GetColor(Token, FName(*Profile));
 }
 
+bool UA11yColorLibrary::ShouldOutline(const UObject* WorldContextObject, FName OutlineKey)
+{
+	const UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(WorldContextObject);
+	if (!Settings)
+	{
+		return false; // no store: as authored (outlines are an option, off by default)
+	}
+	return Settings->ResolveToggle(OutlineKey, Settings->GetBool(TEXT("visual.high_contrast"), false));
+}
+
 void UA11yColorLibrary::ApplyOptionalCvdFilter(EA11yCvdFilterType Type, float Strength01, float EngineSeverityMax)
 {
 	EColorVisionDeficiency EngineType = EColorVisionDeficiency::NormalVision;

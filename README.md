@@ -31,11 +31,11 @@ recipes. Examples:
 | --- | --- |
 | Vision and text | Text and UI scale, readable and dyslexia-friendly fonts, contrast, symbol and colour pairs, colour profiles, outlines, magnifier |
 | Hearing | Subtitles with speaker names and direction, sound captions, sound visualiser, separate volume buses, mono, loud-sound reduction |
-| Motor | Full remapping, hold to toggle, mash to hold or single press, QTE auto-complete, sequential chords, one-handed play, aim assist, sensitivity |
+| Motor | Full remapping, hold to toggle, mash to hold or single press, QTE auto-complete, sequential chords, one-handed play, separate aim slowdown, pull, stabilisation and lock-on, sensitivity |
 | Cognitive and memory | Objective reminders, recaps, journals, graduated hints and spoilers, instruction replay, save anywhere, undo |
 | Sensory load and ADHD | Guidance paint and trails off / on request / boosted, minimal HUD, particle density, notification modes |
-| Photosensitivity | Flash rate guard (at most 3 per second in every mode), reduce flashing, red-flash and pattern checks, IRIS analysis workflow |
-| Motion comfort | Camera shake, head bob, FOV, motion blur, screen effects, reduce motion (honours the OS setting) |
+| Photosensitivity | Flash rate guard (at most 3 per second and 9 per 5 seconds in every mode), reduce flashing, red-flash and pattern checks, IRIS analysis workflow |
+| Motion comfort | Camera shake, head bob, weapon sway, FOV, motion blur, screen effects, reduce motion (honours the OS setting) with per-effect overrides |
 | Phobias and content | Graded spider appearance, insects, snakes, needles, gore, deep water, heights, trypophobia, jump scares, content warnings, scene skips |
 | Difficulty and stress | Separate damage, fall and timer fail states, invincibility, infinite resources, enemy aggression, game speed, skips that keep rewards |
 | Narration | Engine screen-reader trees (AccessKit, Unity AccessibilityHierarchy, Slate), TTS self-voicing, focus narration, voice input |
@@ -62,7 +62,13 @@ npx skills add dominicbytes/game-accessibility-skill --skill game-accessibility 
 | Claude Code | `.claude/skills/game-accessibility/` |
 | Codex, Cursor, GitHub Copilot, Gemini CLI | `.agents/skills/game-accessibility/` |
 
-Keep the folder intact: `SKILL.md` links to its files by relative path.
+Keep the folder intact: `SKILL.md` links to its files by relative path, and the folder carries its
+own copy of the MIT [`LICENSE`](skills/game-accessibility/LICENSE).
+
+**Copying an engine sample** (for example `engines/godot/addons/game_accessibility/` into a Godot
+project): keep the copyright and permission notice with it. Copy
+`skills/game-accessibility/LICENSE` into the copied folder, or add its text to your project's
+third-party notices. An SPDX tag or the `license` field alone is not the notice text.
 
 **Recommended:** add a short pointer to your project's `AGENTS.md` (or `CLAUDE.md`), so agents use
 the skill for every relevant change, not only when asked:
@@ -90,7 +96,7 @@ references/architecture.md       settings store, AssistPolicy, InputAssist, Capt
 references/topics/*.md           22 topic guides, loaded only when their signal is present
 references/verification.md       checks per signal, combinations, release gate
 references/retrofit-audit.md     audit workflow and report format
-assets/settings-registry.json    77 canonical setting keys + 7 presets, shared by every engine
+assets/settings-registry.json    90 canonical setting keys + 7 presets, shared by every engine
 assets/templates/ACCESSIBILITY.md the per-game contract agents maintain
 scripts/scan_signals.py          finds candidate signals in a project (stdlib Python)
 scripts/contrast_check.py        WCAG contrast ratios for theme colours
@@ -101,7 +107,7 @@ engines/godot|unity|unreal|other sample code and integration guides
 
 | Engine | Status |
 | --- | --- |
-| **Godot 4.3+ / Redot** | Drop-in addon (settings store, policies, auto-generated accessible settings menu, captions, TTS narrator, flash guard, content variants, guidance layer, colour tokens). **30/30 tests pass headless on Redot 26.3-stable** (`bash tests/run_godot_tests.sh`, with `REDOT_BIN` set). TTS speech, AccessKit screen-reader output and exported builds were not exercised. |
+| **Godot 4.3+ / Redot** | Drop-in addon (settings store, policies, auto-generated accessible settings menu, captions, TTS narrator, flash guard, content variants, guidance layer, colour tokens). **40/40 tests pass headless on Redot 26.3** (earlier rounds also on 26.3-stable) (`bash tests/run_godot_tests.sh`, with `REDOT_BIN` set). TTS speech, AccessKit screen-reader output and exported builds were not exercised. |
 | **Unity 2022.3+ / 6** | Plain C# core (netstandard2.1) plus Unity adapters. The engine-free core is compiled with Roslyn `csc` and exercised by `bash tests/unity_core/run_unity_core_tests.sh`. The Unity adapters were only compiled against stubs and have **never run in the Unity Editor**, so please report problems. |
 | **Unreal Engine 5** | Runtime module (subsystems and components). **Not compiled here**, because there was no Unreal or C++ toolchain. Please report compile errors. |
 | Others | A guide for web/canvas, Phaser, PixiJS, GameMaker, RPG Maker MZ, Ren'Py, Twine, Bevy, MonoGame/FNA, LÖVE, Defold, Construct, Roblox and Minecraft modding, plus a minimal JS reference. |
@@ -141,7 +147,9 @@ before opening a pull request.
 
 ## Licence
 
-[MIT](LICENSE). Third-party fonts, tools and libraries mentioned in the guides keep their own licences.
+[MIT](LICENSE). The installable folder includes the same notice at
+[`skills/game-accessibility/LICENSE`](skills/game-accessibility/LICENSE); keep it when you copy the
+skill or any engine sample. Third-party fonts, tools and libraries mentioned in the guides keep their own licences.
 
 ## About Dominic Bytes
 

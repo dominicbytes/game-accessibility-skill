@@ -19,7 +19,7 @@ different game. **Skip when:** movement has no gaps, falls, climbing, pursuit or
 | M36 | Automatic climb, vault and ledge transitions | `game.input.auto_traverse` | Off | C | M |
 | D14 | Slower hazards, moving platforms and autoscroll | `assist.game_speed` (whole game) or a hazard-only key | 1.0 | C | M, C |
 | D23 | Chase assist or skip; platforming section skip | `assist.skip_available` | true | C | M, T, C |
-| V28 | Platform and edge outlines, landing marker | `visual.high_contrast` | false | C | V, C |
+| V28 | Platform and edge outlines, landing marker | `visual.outline_hazards` (umbrella `visual.high_contrast`) | `follow` | C | V, C |
 | R15 | Distinct audio for edges, landing and ledges | none (design) | Designer | C | V |
 
 Combat damage and invincibility: [difficulty-and-assists](difficulty-and-assists.md). Camera
@@ -90,8 +90,8 @@ if policy.should_fail("fall") == false:
 
 - Lethal edges, spikes and pits use the **hazard** channel, not guidance. Turning guidance off never
   hides them (see [sensory-load-and-guidance](sensory-load-and-guidance.md)).
-- `visual.high_contrast` adds platform and edge outlines through `ColorTokens`, with a shape or
-  pattern as well as colour.
+- `visual.outline_hazards` (following the `visual.high_contrast` umbrella unless set) adds platform
+  and edge outlines through `ColorTokens`, with a shape or pattern as well as colour.
 - 3D depth: a drop shadow or landing marker directly below the player, and an optional jump arc
   preview. These show where the player will land without changing the jump.
 - Audio: a distinct sound for nearing an edge, for a ledge in reach and for a safe landing. Send

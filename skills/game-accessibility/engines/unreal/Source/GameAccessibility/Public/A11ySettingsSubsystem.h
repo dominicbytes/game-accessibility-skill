@@ -112,6 +112,16 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Accessibility|Settings")
 	FString GetValueAsString(FName Key) const;
 
+	/**
+	 * Resolves a per-effect override key whose values are "follow"/"off"/"on" (visual.outline_*,
+	 * motion.auto_camera, motion.fov_effects, ...). "on" -> true, "off" -> false. "follow", an unregistered
+	 * key or any other value -> bFollowValue, which the caller computes from the umbrella key, for example
+	 * GetBool("visual.high_contrast") or !GetBool("motion.reduce_motion"). A project that registered the key
+	 * as a plain bool gets that bool.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Accessibility|Settings")
+	bool ResolveToggle(FName Key, bool bFollowValue) const;
+
 	/** True when the player chose this value (directly or through a preset). OS preferences never override it. */
 	UFUNCTION(BlueprintPure, Category = "Accessibility|Settings")
 	bool IsExplicitlySet(FName Key) const;
@@ -196,9 +206,28 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Accessibility|Settings")
 	FA11ySettingChangedSignature OnSettingChanged;
 
-	/** Raised by UA11yAssistPolicy::RequestSkip. The challenge owner completes via its normal success path. */
+	/**
+	 * Raised by UA11yAssistPolicy::RequestSkip (challenge, gated by assist.skip_available) and
+	 * UA11yAssistPolicy::RequestSceneSkip (sensitive scene, gated by content.scene_skip). Both use this one
+	 * delegate, so the owner completes through its normal success path either way. Raised at most once per
+	 * Id until ClearSkipRequest(Id).
+	 */
 	UPROPERTY(BlueprintAssignable, Category = "Accessibility|Assist")
 	FA11yChallengeSkipSignature OnChallengeSkipRequested;
+
+	/**
+	 * Shared, idempotent skip path. The FIRST request for Id broadcasts OnChallengeSkipRequested; repeats
+	 * (double press, or both a scene skip and a challenge skip for the same Id) return true without
+	 * broadcasting again. Gate checks happen in UA11yAssistPolicy; call that instead of this.
+	 */
+	bool SubmitSkipRequest(FName Id);
+
+	/** Re-arms Id. Call when the challenge or scene can be played again (restart, chapter replay). */
+	UFUNCTION(BlueprintCallable, Category = "Accessibility|Assist")
+	void ClearSkipRequest(FName Id);
+
+	UFUNCTION(BlueprintPure, Category = "Accessibility|Assist")
+	bool IsSkipRequested(FName Id) const;
 
 	static constexpr int32 SaveFormatVersion = 1;
 	/** Upper bound for "string" values so a hand-edited file cannot load megabytes of text. */
@@ -230,5 +259,7 @@ private:
 	TSet<FName> ExplicitKeys;
 	TArray<FA11yPresetDefinition> Presets;
 	TArray<FPresetUndoEntry> LastPresetUndo;
+	/** Ids whose skip has been broadcast and not yet re-armed. Session only; never saved. */
+	TSet<FName> SubmittedSkipIds;
 	bool bDirty = false;
 };

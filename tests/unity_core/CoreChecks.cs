@@ -190,7 +190,7 @@ static class CoreChecks
 
         // ---- registry v2: new keys and the string type
         var n = A11ySettingsStore.FromRegistryJson(json);
-        Check(n.Definitions.Count == 77, "77 keys " + n.Definitions.Count);
+        Check(n.Definitions.Count == 90, "90 keys " + n.Definitions.Count);
         Check(n.GetDefinition("visual.custom_colors").Type == SettingType.String && n.Get<string>("visual.custom_colors") == "", "string type default");
         Check(n.Set("hud.hidden_elements", "minimap,damage_numbers") && n.Get<string>("hud.hidden_elements") == "minimap,damage_numbers", "string set");
         Check(!n.Set("hud.hidden_elements", 3.0) && !n.Set("hud.hidden_elements", null), "string rejects non-strings");
@@ -280,7 +280,278 @@ static class CoreChecks
         var apia = new InputAssistCore(ap);
         Check(!apia.TargetLock && ap.ApplyPreset("reduced_physical_effort") && apia.TargetLock, "target lock via preset");
 
+        FlashCountingChecks(json);
+        SkipChecks(json);
+        ToggleAndOverrideChecks(json);
+        CameraShakeChecks(json);
+        NarrationChecks(json);
+
         Console.WriteLine(passes + " passed, " + fails + " failed");
         return fails == 0 ? 0 : 1;
     }
+
+    static int CountFlashes(FlashGuardCore g, double start, int n, double hz, float intensity, float area, bool red)
+    {
+        int allowed = 0;
+        for (int i = 0; i < n; i++)
+            if (g.RequestFlash(start + i / hz, intensity, area, red).Output != FlashOutput.Suppressed) allowed++;
+        return allowed;
+    }
+
+    // ---- FlashGuard: counted = area >= 0.25 OR intensity >= 0.1 OR saturated red; limits cannot be loosened
+    static void FlashCountingChecks(string json)
+    {
+        var st = A11ySettingsStore.FromRegistryJson(json);
+        Check(CountFlashes(new FlashGuardCore(st), 0, 10, 10.0, 0.4f, 0.09f, false) == 3, "small-area moderate-intensity repeats capped at 3 per s");
+        var g = new FlashGuardCore(st);
+        int sustained = CountFlashes(g, 0, 20, 10.0 / 3.0, 0.4f, 0.09f, false); // 3.3 Hz for 6 s
+        Check(sustained == 12, "small-area moderate repeats also hit the 5 s budget (" + sustained + ")");
+        Check(CountFlashes(new FlashGuardCore(st), 0, 10, 10.0, 0.05f, 0.01f, true) == 3, "small saturated-red repeats capped at 3 per s");
+        var gr = new FlashGuardCore(st);
+        int red3 = CountFlashes(gr, 0, 18, 3.0, 0.02f, 0.02f, true);
+        Check(red3 == 12, "small saturated-red 3 Hz for 6 s capped like any flash (" + red3 + ")");
+        Check(gr.Counts(0f, 0f, true) && !gr.Counts(0.09f, 0.24f, false) && gr.Counts(0.1f, 0f, false) && gr.Counts(0f, 0.25f, false), "counting rule");
+        Check(CountFlashes(new FlashGuardCore(st), 0, 10, 10.0, 0.05f, 0.01f, false) == 10, "small dim non-red flashes not counted");
+        var loose = new FlashGuardCore(st) { LargeAreaThreshold = 0.9f, BrightIntensityThreshold = 0.9f, MaxFlashesPerWindow = 10, MaxFlashesPerLongWindow = 50 };
+        Check(CountFlashes(loose, 0, 10, 10.0, 0.4f, 0.09f, false) == 3, "thresholds and budgets cannot be loosened");
+        var strict = new FlashGuardCore(st) { LargeAreaThreshold = 0.05f };
+        Check(CountFlashes(strict, 0, 10, 10.0, 0.05f, 0.06f, false) == 3, "stricter area threshold honoured");
+        st.Set("motion.reduce_flashing", true);
+        var gReduce = new FlashGuardCore(st);
+        Check(CountFlashes(gReduce, 0, 10, 10.0, 0.05f, 0.01f, true) == 3, "red counted with reduce_flashing on");
+        Check(gReduce.RequestFlash(50, 1f, float.NaN).Output == FlashOutput.SteadyFade && !new FlashGuardCore(st).Counts(0f, 0f, false), "NaN area treated as full screen");
+    }
+
+    // ---- skips: challenge skip and sensitive-scene skip are gated separately and share one completion
+    static void SkipChecks(string json)
+    {
+        foreach (bool challenge in new[] { false, true })
+        foreach (bool scene in new[] { false, true })
+        {
+            var st = A11ySettingsStore.FromRegistryJson(json);
+            st.Set("assist.skip_available", challenge);
+            st.Set("content.scene_skip", scene);
+            var p = new AssistPolicy(st);
+            var done = new List<string>();
+            p.SkipRequested += id => done.Add(id);
+            bool c = p.RequestSkip("puzzle1");
+            bool s = p.RequestSceneSkip("scene7");
+            string tag = " (skip_available=" + challenge + ", scene_skip=" + scene + ")";
+            Check(c == challenge && s == scene, "skip gates" + tag);
+            Check(done.Contains("puzzle1") == challenge && done.Contains("scene7") == scene && done.Count == (challenge ? 1 : 0) + (scene ? 1 : 0), "skip completion events" + tag);
+        }
+        var only = A11ySettingsStore.FromRegistryJson(json, new HashSet<string> { "content.scene_skip" });
+        var op = new AssistPolicy(only);
+        int events = 0;
+        op.SkipRequested += _ => events++;
+        Check(!op.RequestSkip("puzzle1") && op.RequestSceneSkip("scene7") && events == 1, "scene-only registry: scene skip works, challenge skip refused");
+        Check(op.RequestSceneSkip("scene7") && events == 1 && op.WasSkipped("scene7"), "repeat scene skip is idempotent");
+        op.ForgetSkip("scene7");
+        Check(op.RequestSceneSkip("scene7") && events == 2, "ForgetSkip allows a replay");
+        Check(!op.RequestSceneSkip("") && !op.RequestSceneSkip(null), "empty scene id refused");
+        var both = A11ySettingsStore.FromRegistryJson(json);
+        var bp = new AssistPolicy(both);
+        int bEvents = 0;
+        bp.SkipRequested += _ => bEvents++;
+        Check(bp.RequestSkip("x") && bp.RequestSceneSkip("x") && bEvents == 1, "same id through both routes completes once");
+    }
+
+    // ---- ResolveToggle, outline classes, motion overrides, scares, aim keys
+    static void ToggleAndOverrideChecks(string json)
+    {
+        var st = A11ySettingsStore.FromRegistryJson(json);
+        Check(st.ResolveToggle("visual.outline_enemies", true) && !st.ResolveToggle("visual.outline_enemies", false), "follow returns followValue");
+        st.Set("visual.outline_enemies", "on");
+        Check(st.ResolveToggle("visual.outline_enemies", false), "on returns true");
+        st.Set("visual.outline_enemies", "off");
+        Check(!st.ResolveToggle("visual.outline_enemies", true), "off returns false");
+        Check(st.ResolveToggle("no.such_key", true) && !st.ResolveToggle("no.such_key", false) && st.ResolveToggle(null, true), "unregistered key returns followValue");
+        var sub = A11ySettingsStore.FromRegistryJson(json, new HashSet<string> { "visual.high_contrast" });
+        Check(sub.ResolveToggle("visual.outline_allies", true) && !sub.ResolveToggle("visual.outline_allies", false), "pruned override returns followValue");
+
+        // outlines follow visual.high_contrast per class
+        var o = A11ySettingsStore.FromRegistryJson(json);
+        bool allOff = true;
+        foreach (OutlineClass c in (OutlineClass[])Enum.GetValues(typeof(OutlineClass))) allOff &= !PresentationRules.OutlineEnabled(o, c);
+        Check(allOff, "outlines off by default");
+        o.Set("visual.high_contrast", true);
+        o.Set("visual.outline_allies", "off");
+        Check(PresentationRules.OutlineEnabled(o, OutlineClass.Enemies) && !PresentationRules.OutlineEnabled(o, OutlineClass.Allies)
+              && PresentationRules.OutlineEnabled(o, OutlineClass.Interactables) && PresentationRules.OutlineEnabled(o, OutlineClass.Hazards), "outline class override under high contrast");
+        o.Set("visual.high_contrast", false);
+        o.Set("visual.outline_hazards", "on");
+        Check(PresentationRules.OutlineEnabled(o, OutlineClass.Hazards) && !PresentationRules.OutlineEnabled(o, OutlineClass.Enemies), "single outline class without high contrast");
+        Check(PresentationRules.OutlineEnabled(sub, OutlineClass.Enemies) == false && sub.Set("visual.high_contrast", true) && PresentationRules.OutlineEnabled(sub, OutlineClass.Enemies), "outlines follow umbrella when class keys pruned");
+
+        // motion overrides resolve with followValue = !reduce_motion
+        var m = A11ySettingsStore.FromRegistryJson(json);
+        bool allOn = true;
+        foreach (MotionEffect e in (MotionEffect[])Enum.GetValues(typeof(MotionEffect))) allOn &= PresentationRules.MotionEffectEnabled(m, e);
+        Check(allOn, "motion effects on by default");
+        m.Set("motion.reduce_motion", true);
+        m.Set("motion.auto_camera", "on");
+        Check(PresentationRules.MotionEffectEnabled(m, MotionEffect.AutoCamera) && !PresentationRules.MotionEffectEnabled(m, MotionEffect.Parallax)
+              && !PresentationRules.MotionEffectEnabled(m, MotionEffect.MenuAnimation) && !PresentationRules.MotionEffectEnabled(m, MotionEffect.SpeedLines)
+              && !PresentationRules.MotionEffectEnabled(m, MotionEffect.FovEffects), "reduce motion with one effect kept on");
+        m.Set("motion.reduce_motion", false);
+        m.Set("motion.parallax", "off");
+        Check(!PresentationRules.MotionEffectEnabled(m, MotionEffect.Parallax) && PresentationRules.MotionEffectEnabled(m, MotionEffect.SpeedLines), "single effect off without reduce motion");
+
+        // OS reduce-motion preference: floats to 0 (shake, bob, weapon sway), overrides follow the umbrella
+        var os = A11ySettingsStore.FromRegistryJson(json);
+        os.ImportPlatformPreference("reduce_motion", true);
+        Check(os.Get<double>("motion.weapon_sway") == 0.0 && os.Get<double>("motion.head_bob") == 0.0 && os.Get<bool>("motion.reduce_motion"), "OS reduce motion -> sway, bob off, umbrella on");
+        Check(os.Get<string>("motion.parallax") == "follow" && !PresentationRules.MotionEffectEnabled(os, MotionEffect.Parallax), "OS reduce motion reaches follow overrides");
+        os.Set("motion.menu_animation", "on");
+        os.ImportPlatformPreference("reduce_motion", true);
+        Check(PresentationRules.MotionEffectEnabled(os, MotionEffect.MenuAnimation), "explicit override survives OS import");
+        os.ImportPlatformPreference("reduce_motion", false);
+        Check(os.Get<double>("motion.weapon_sway") == 0.5 && PresentationRules.MotionEffectEnabled(os, MotionEffect.Parallax), "OS revert restores sway and effects");
+
+        // weapon sway is independent of head bob
+        var wb = A11ySettingsStore.FromRegistryJson(json);
+        wb.Set("motion.head_bob", 0.0);
+        Check(wb.Get<double>("motion.weapon_sway") == 0.5, "head bob does not change weapon sway");
+        wb.Set("motion.weapon_sway", 1.0);
+        Check(wb.Get<double>("motion.head_bob") == 0.0, "weapon sway does not change head bob");
+
+        // scares: intensity and warnings are separate
+        var sc = A11ySettingsStore.FromRegistryJson(json);
+        Check(!PresentationRules.JumpScaresReduced(sc) && !PresentationRules.ScareWarnings(sc), "scare defaults");
+        Check(!sc.Set("content.jump_scares", "warned"), "old 'warned' value rejected");
+        sc.Set("content.scare_warnings", true);
+        Check(!PresentationRules.JumpScaresReduced(sc) && PresentationRules.ScareWarnings(sc), "full scares with warnings");
+        sc.Set("content.jump_scares", "reduced");
+        sc.Set("content.scare_warnings", false);
+        Check(PresentationRules.JumpScaresReduced(sc) && !PresentationRules.ScareWarnings(sc), "reduced scares without warnings");
+
+        // aim: slowdown, pull and stabilisation are separate
+        var aim = A11ySettingsStore.FromRegistryJson(json);
+        var ia = new InputAssistCore(aim);
+        Check(ia.AimSlowdown == 0f && ia.AimPull == 0f && ia.AimStabilization == 0f, "aim defaults off");
+        aim.Set("input.aim_pull", 0.75);
+        Check(ia.AimPull == 0.75f && ia.AimSlowdown == 0f && ia.AimStabilization == 0f, "pull without slowdown");
+        aim.ApplyPreset("reduced_physical_effort");
+        Check(ia.AimSlowdown == 0.75f && ia.AimPull == 0.5f && ia.AimStabilization == 0.5f, "preset sets each aim key");
+        var noAim = new InputAssistCore(A11ySettingsStore.FromRegistryJson(json, new HashSet<string> { "input.aim_assist" }));
+        Check(noAim.AimPull == 0f && noAim.AimStabilization == 0f, "pruned aim keys mean no change");
+        ia.Dispose(); noAim.Dispose();
+    }
+
+    // ---- camera shake: scale applied at output; Off clears active shake
+    static void CameraShakeChecks(string json)
+    {
+        var st = A11ySettingsStore.FromRegistryJson(json);
+        st.Set("motion.camera_shake", 1.0);
+        var sh = new CameraShakeCore(st) { DecayPerSecond = 0f };
+        sh.AddTrauma(1f);
+        Check(Math.Abs(sh.Amplitude - 1f) < 1e-6, "full shake amplitude");
+        st.Set("motion.camera_shake", 0.5);
+        Check(Math.Abs(sh.Amplitude - 0.5f) < 1e-6, "lowering scale mid-shake lowers output at once");
+        st.Set("motion.camera_shake", 0.0);
+        Check(sh.Amplitude == 0f && sh.Trauma == 0f, "Off during an active shake stops it");
+        sh.Tick(1f);
+        st.Set("motion.camera_shake", 1.0);
+        Check(sh.Amplitude == 0f, "old shake does not resume when re-enabled (zero decay)");
+        st.Set("motion.camera_shake", 0.0);
+        sh.AddTrauma(1f);
+        Check(sh.Trauma == 0f, "new shake ignored while Off");
+        st.Set("motion.camera_shake", 1.0);
+        sh.DecayPerSecond = 1f;
+        sh.AddTrauma(0.5f);
+        sh.Tick(0.25f);
+        Check(Math.Abs(sh.Trauma - 0.25f) < 1e-6, "decay in real seconds");
+        sh.Dispose();
+        st.Set("motion.camera_shake", 0.0);
+        Check(Math.Abs(sh.Trauma - 0.25f) < 1e-6, "disposed core stops listening");
+        var none = new CameraShakeCore(A11ySettingsStore.FromRegistryJson(json, new HashSet<string> { "text.scale" }));
+        none.AddTrauma(1f);
+        Check(none.Scale == 1f && none.Amplitude == 1f, "unregistered shake key keeps authored shake");
+    }
+
+    sealed class FakeBackend : INarrationBackend
+    {
+        public bool IsAvailable { get; set; } = true;
+        public bool IsSpeaking { get; set; }
+        public readonly List<string> Spoken = new List<string>();
+        public int Stops;
+        public void Speak(string text, bool interrupt) { Spoken.Add(text); IsSpeaking = true; }
+        public void Stop() { Stops++; IsSpeaking = false; }
+        public void SetRate(float rate) { }
+        public void Finish() => IsSpeaking = false;
+    }
+
+    // ---- narration: settings and route ownership re-checked; menu off stops menu speech only
+    static void NarrationChecks(string json)
+    {
+        var st = A11ySettingsStore.FromRegistryJson(json);
+        st.Set("narration.enabled", true);
+        st.Set("narration.dialogue", true);
+        var be = new FakeBackend();
+        bool native = false;
+        var announced = new List<string>();
+        var q = new NarrationQueue(st) { Backend = be, NativeRouteActive = () => native, Announce = announced.Add };
+
+        q.Speak("menu 1"); q.Speak("menu 2"); q.Speak("line 1", NarrationPriority.Normal, NarrationChannel.Dialogue);
+        q.Tick();
+        Check(be.Spoken.Count == 1 && be.Spoken[0] == "menu 1" && be.IsSpeaking && q.PendingCount == 2, "busy backend: first utterance playing, rest queued");
+        st.Set("narration.enabled", false);
+        Check(be.Stops == 1 && !be.IsSpeaking && q.PendingCount == 1, "menu narration off stops current and discards queued menu speech");
+        q.Tick();
+        Check(be.Spoken.Count == 2 && be.Spoken[1] == "line 1", "dialogue reading continues independently");
+        q.Speak("menu 3");
+        q.Speak("Volume, slider", NarrationPriority.Focus);
+        Check(q.PendingCount == 0, "menu speech refused while off");
+        be.Finish(); q.Tick();
+        Check(be.Spoken.Count == 2, "nothing menu-related dispatched after off");
+
+        // dialogue off leaves menu speech alone
+        st.Set("narration.enabled", true);
+        q.Speak("line 2", NarrationPriority.Normal, NarrationChannel.Dialogue);
+        q.Tick();
+        q.Speak("menu 4");
+        int stops = be.Stops;
+        st.Set("narration.dialogue", false);
+        Check(be.Stops == stops + 1 && q.PendingCount == 1, "dialogue off stops dialogue only");
+        q.Tick();
+        Check(be.Spoken[be.Spoken.Count - 1] == "menu 4", "menu speech survives dialogue off");
+
+        // route ownership re-checked before dispatch
+        st.Set("narration.dialogue", true);
+        be.Finish(); q.Tick();
+        q.Speak("menu 5"); q.Tick();                         // playing
+        q.Speak("menu 6");
+        q.Speak("line 3", NarrationPriority.Normal, NarrationChannel.Dialogue);
+        q.Speak("alert", NarrationPriority.Critical);        // interrupts menu 5
+        Check(be.Spoken[be.Spoken.Count - 1] == "alert", "critical interrupts");
+        q.Speak("menu 7"); // queued behind
+        int spokenBefore = be.Spoken.Count;
+        stops = be.Stops;
+        native = true;
+        q.Tick();
+        Check(q.PendingCount == 0 && be.Spoken.Count == spokenBefore, "native route: queued self-voicing dropped, nothing dispatched");
+        Check(be.Stops == stops + 1, "native route: current self-voiced menu speech stopped");
+        Check(announced.Contains("line 3") && !announced.Contains("menu 6") && !announced.Contains("menu 7"), "native route: queued dialogue handed to the reader, menu speech dropped");
+        q.Speak("focus", NarrationPriority.Focus);
+        q.Speak("notice");
+        Check(!announced.Contains("focus") && announced.Contains("notice") && q.PendingCount == 0, "native route: focus left to reader, announcements sent natively");
+        native = false;
+
+        // focus replacement and queue cap still hold
+        be.Finish(); q.Tick();
+        q.Speak("f1", NarrationPriority.Focus); q.Tick();
+        q.Speak("f2", NarrationPriority.Focus);
+        Check(be.Spoken[be.Spoken.Count - 1] == "f2", "newer focus interrupts focus speech");
+        var cap = new NarrationQueue(st, 2) { Backend = new FakeBackend { IsSpeaking = true } };
+        cap.Speak("a"); cap.Speak("b"); cap.Speak("c");
+        Check(cap.PendingCount == 2, "queue capped");
+        int stopsBeforeDispose = be.Stops;
+        q.Dispose();
+        st.Set("narration.enabled", false);
+        Check(be.Stops == stopsBeforeDispose && be.IsSpeaking, "disposed queue stops listening to settings");
+        var noKeys = new NarrationQueue(A11ySettingsStore.FromRegistryJson(json, new HashSet<string> { "text.scale" })) { Backend = new FakeBackend() };
+        noKeys.Speak("x"); noKeys.Tick();
+        Check(noKeys.PendingCount == 0, "unregistered narration keys mean no self-voicing");
+    }
 }
+

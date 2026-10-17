@@ -21,8 +21,9 @@ signal setting_changed(id: String, value: Variant)
 signal preset_applied(preset_id: String)
 ## Emitted after [method undo_last_preset] finished its batch.
 signal preset_undone(preset_id: String)
-## Emitted by [method A11yAssistPolicy.request_skip] through [method emit_skip_requested]. Connect the
-## challenge's normal success path.
+## Emitted once per id by [method A11yAssistPolicy.request_skip] (challenges) and
+## [method A11yAssistPolicy.request_scene_skip] (sensitive scenes) through
+## [method emit_skip_requested]. Connect the normal completion path of the challenge or scene.
 signal skip_requested(challenge_id: String)
 
 const SCHEMA_VERSION: int = 1
@@ -36,6 +37,7 @@ const OS_PREF_VALUES: Dictionary = {
 		"motion.reduce_motion": true,
 		"motion.camera_shake": 0.0,
 		"motion.head_bob": 0.0,
+		"motion.weapon_sway": 0.0,
 		"motion.motion_blur": false,
 		"motion.reduce_flashing": true,
 	},
@@ -103,6 +105,7 @@ var _os_values: Dictionary = {}
 var _undo: Dictionary = {}
 var _save_due_msec: int = -1
 var _extra: Dictionary = {}
+var _skipped: Dictionary = {}
 
 
 func _init() -> void:
@@ -151,9 +154,29 @@ static func set_active(store: A11ySettings) -> void:
 	_active = store
 
 
-## Emits [signal skip_requested]. Called by [method A11yAssistPolicy.request_skip].
-func emit_skip_requested(challenge_id: String) -> void:
-	skip_requested.emit(challenge_id)
+## Emits [signal skip_requested] the first time [param id] is skipped; repeated requests for the
+## same id do nothing, so the completion path runs once. Returns true when the signal was emitted.
+## Called by [method A11yAssistPolicy.request_skip] and [method A11yAssistPolicy.request_scene_skip].
+func emit_skip_requested(id: String) -> bool:
+	if _skipped.has(id):
+		return false
+	_skipped[id] = true
+	skip_requested.emit(id)
+	return true
+
+
+## True when [param id] was already skipped (and not cleared since).
+func was_skipped(id: String) -> bool:
+	return _skipped.has(id)
+
+
+## Forgets a completed skip so the challenge or scene can be skipped again, for example when the
+## player replays it. An empty [param id] forgets every skip.
+func clear_skip(id: String = "") -> void:
+	if id.is_empty():
+		_skipped.clear()
+	else:
+		_skipped.erase(id)
 
 
 # --- Registry -------------------------------------------------------------------------------------
@@ -274,6 +297,19 @@ func get_int(id: String, fallback: int = 0) -> int:
 func get_string(id: String, fallback: String = "") -> String:
 	var v: Variant = _values.get(id)
 	return str(v) if v is String else fallback
+
+
+## Resolves a per-class or per-effect override key with the values "follow" / "off" / "on":
+## "on" -> true, "off" -> false, "follow" (or a key missing from a pruned registry) -> [param follow_value].
+## Examples: [code]resolve_toggle("visual.outline_enemies", get_bool("visual.high_contrast"))[/code],
+## [code]resolve_toggle("motion.parallax", not get_bool("motion.reduce_motion"))[/code].
+func resolve_toggle(key: String, follow_value: bool) -> bool:
+	match get_string(key, "follow"):
+		"on":
+			return true
+		"off":
+			return false
+	return follow_value
 
 
 ## Splits a string key into trimmed, non-empty items, for example hud.hidden_elements

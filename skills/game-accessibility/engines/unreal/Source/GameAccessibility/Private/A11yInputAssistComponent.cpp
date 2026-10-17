@@ -244,6 +244,29 @@ void UA11yInputAssistComponent::EndQte(FName QteId)
 	Qtes.Remove(QteId);
 }
 
+// ---- Aim assistance -----------------------------------------------------------------------------
+
+float UA11yInputAssistComponent::GetUnitFloat(FName Key) const
+{
+	const UA11ySettingsSubsystem* Settings = UA11ySettingsSubsystem::Get(this);
+	return Settings ? FMath::Clamp(Settings->GetFloat(Key, 0.f), 0.f, 1.f) : 0.f;
+}
+
+float UA11yInputAssistComponent::GetAimSlowdownStrength() const
+{
+	return GetUnitFloat(TEXT("input.aim_assist"));
+}
+
+float UA11yInputAssistComponent::GetAimPullStrength() const
+{
+	return GetUnitFloat(TEXT("input.aim_pull"));
+}
+
+float UA11yInputAssistComponent::GetAimStabilizationStrength() const
+{
+	return GetUnitFloat(TEXT("input.aim_stabilization"));
+}
+
 // ---- Timing windows -----------------------------------------------------------------------------
 
 float UA11yInputAssistComponent::TimingWindow(float BaseSeconds) const

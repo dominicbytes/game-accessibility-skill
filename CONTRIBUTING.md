@@ -19,7 +19,9 @@ few strict rules.
    (`S001`-`S157`) come from [`signal-routing.md`](skills/game-accessibility/references/signal-routing.md).
    Setting keys (`text.scale`, `input.qte_mode`, ...) come from
    [`settings-registry.json`](skills/game-accessibility/assets/settings-registry.json). Add new IDs at
-   the end. Never renumber.
+   the end. Never renumber. When an "all" control covers several distinct effects or classes, add
+   a per-part `follow` / `off` / `on` key for each and resolve it with `resolve_toggle` (see
+   `references/architecture.md` section 1); never ship only the umbrella.
 4. **Progressive disclosure.** `SKILL.md` stays short (under 250 lines). Detail lives in the one
    topic guide that its signal routes to. Do not duplicate guidance across guides; link instead.
    References are linked directly from `SKILL.md`, one level deep.
@@ -64,8 +66,10 @@ One subsection per option group, with the pitfalls.
 
 ## Tests
 
-- `python tests/check_skill.py` validates the frontmatter, links, IDs, registry keys and SKILL.md
-  length.
+- `python tests/check_skill.py` validates the frontmatter, links, IDs, registry keys, SKILL.md
+  length, Advanced-tier consistency between the catalogue, the router and the topic tables, and
+  that `skills/game-accessibility/LICENSE` matches the repository `LICENSE`. If you change the
+  licence, update both copies.
 - `tests/run_godot_tests.sh` runs the Godot/Redot sample tests headless. Set `REDOT_BIN` or
   `GODOT_BIN` first.
 - Scenario evals live in `evals/`. Run the prompts with and without the skill installed and

@@ -1,11 +1,18 @@
 ## Camera comfort scaling at the camera owner (architecture.md, section 8).
 ##
 ## Multiply every shake source (including scripted and cutscene shake) by [method scale_shake], every
-## bob by [method scale_bob] and every overlay (vignette, damage overlay, distortion) by
+## head bob by [method scale_bob], held-item sway and breathing by [method scale_sway] (a separate
+## key, motion.weapon_sway), and every overlay (vignette, damage overlay, distortion) by
 ## [method effects_scale]. Motion blur, chromatic aberration and depth of field are separate
-## switches. Gate automatic camera
-## swings and zoom pulses with [method allow_auto_camera] / [method scale_zoom_pulse].
-## Set [member camera] to keep a Camera3D's FOV in sync with motion.fov.
+## switches.
+##
+## motion.reduce_motion is the umbrella; each decorative or automatic motion has its own override
+## key ("follow" / "off" / "on", where "on" means the effect is allowed) resolved with
+## [method A11ySettings.resolve_toggle] and follow value [code]not reduce_motion[/code]:
+## [method allow_auto_camera] (motion.auto_camera), [method allow_fov_effects] (motion.fov_effects),
+## [method allow_speed_lines] (motion.speed_lines), [method allow_parallax] (motion.parallax) and
+## [method allow_menu_animation] (motion.menu_animation). Zoom pulses follow the umbrella through
+## [method scale_zoom_pulse]. Set [member camera] to keep a Camera3D's FOV in sync with motion.fov.
 class_name A11yCameraComfort
 extends Node
 
@@ -53,6 +60,12 @@ func scale_bob(amount: float) -> float:
 	return amount * _value("motion.head_bob", 1.0)
 
 
+## Visual sway and breathing motion of held items after motion.weapon_sway (independent of head
+## bob). Visual only: aim accuracy and recoil stay as designed (see input.aim_stabilization).
+func scale_sway(amount: float) -> float:
+	return amount * _value("motion.weapon_sway", 1.0)
+
+
 ## Multiplier for vignette, chromatic aberration, damage overlays and distortion.
 func effects_scale() -> float:
 	return _value("motion.screen_effects", 1.0)
@@ -91,9 +104,38 @@ func reduce_motion() -> bool:
 	return store != null and store.get_bool("motion.reduce_motion")
 
 
-## False while reduce motion is on: skip automatic camera swings, parallax and animated menus.
+## Whether the motion behind override [param key] is allowed: the key's "on" / "off", or
+## [code]not reduce_motion[/code] when it is "follow" or pruned.
+func allows_motion(key: String) -> bool:
+	var store: A11ySettings = _settings()
+	var follow_value: bool = not reduce_motion()
+	return store.resolve_toggle(key, follow_value) if store != null else follow_value
+
+
+## Automatic recentring and camera swings (motion.auto_camera).
 func allow_auto_camera() -> bool:
-	return not reduce_motion()
+	return allows_motion("motion.auto_camera")
+
+
+## Field-of-view changes when sprinting, aiming or boosting (motion.fov_effects).
+func allow_fov_effects() -> bool:
+	return allows_motion("motion.fov_effects")
+
+
+## Speed lines and radial blur (motion.speed_lines).
+func allow_speed_lines() -> bool:
+	return allows_motion("motion.speed_lines")
+
+
+## Parallax and scrolling background layers (motion.parallax).
+func allow_parallax() -> bool:
+	return allows_motion("motion.parallax")
+
+
+## Animated menu backgrounds and UI transitions (motion.menu_animation). When false, show static
+## menus and instant transitions.
+func allow_menu_animation() -> bool:
+	return allows_motion("motion.menu_animation")
 
 
 ## Zoom pulse amount; 0 while reduce motion is on.

@@ -17,27 +17,29 @@ Vehicle horizon and stabilisation: [vehicles](vehicles.md). Flashing: [photosens
 |----|--------|-------------|---------|------|-------|
 | O01 | Camera shake intensity / Off | `motion.camera_shake` | **Reduced (50%)**; 0% exists | C | O, N, P |
 | O02 | Camera / head bob intensity / Off | `motion.head_bob` | **Reduced (50%)**; 0% exists | C | O |
-| O03 | Weapon sway / breathing motion (visual) | `motion.head_bob` | Reduced with bob | C | O |
+| O03 | Weapon sway / breathing motion (visual) | `motion.weapon_sway` | **Reduced (50%)**; 0% exists | C | O |
 | O04 | Motion blur / Off | `motion.motion_blur` | On (designer); OS reduce-motion as first value | C | O, V |
 | O05 | Field of view | `motion.fov` | 75° vertical; range 60–110 | C | O, V |
 | O06 | Camera distance (third person) | — | Designer | C | O, V |
 | O07 | Camera speed / look sensitivity | `input.look_sensitivity` | 1.0 (0.25–3.0) | C | O, M |
 | O08 | Camera smoothing / lag Off | — | Designer | C | O, M |
-| O09 | Automatic recentring Off | `motion.reduce_motion` | Designer; manual recentre always bound | C | O, M |
+| O09 | Automatic recentring Off | `motion.auto_camera` | `follow`; manual recentre always bound | C | O, M |
 | O10 | Scripted camera pulls Off | — | Designer | C | O, V |
-| O11 | Automatic camera rotation Off | `motion.reduce_motion` | Reduced | C | O |
+| O11 | Automatic camera rotation Off | `motion.auto_camera` | `follow`; keep automatic rotation minimal by design | C | O |
 | O12 | Stable horizon / reduced roll | — | Designer | C | O |
-| O13 | Sprint and aim dynamic FOV Off | `motion.reduce_motion` | Designer | C | O |
-| O14 | Speed lines / radial blur Off | `motion.reduce_motion` | Designer | C | O, N |
+| O13 | Sprint and aim dynamic FOV Off | `motion.fov_effects` | `follow` | C | O |
+| O14 | Speed lines / radial blur Off | `motion.speed_lines` | `follow` | C | O, N |
 | O15 | Chromatic aberration Off; vignette, overlays and distortion scale | `motion.chromatic_aberration`; `motion.screen_effects` | On; 100% (designer) | C | O, V |
 | O16 | Stable screen-centre dot | — | Off | C | O |
-| O17 | Reduce parallax / background scrolling | `motion.reduce_motion` | Off; OS reduce-motion as first value | C | O, N |
+| O17 | Reduce parallax / background scrolling | `motion.parallax` | `follow` | C | O, N |
 | O21 | Depth of field Off | `motion.depth_of_field` | On (designer) | C | V, O |
-| N05 | Static menu backgrounds | `motion.reduce_motion` | Off; OS reduce-motion as first value | B | N, C |
-| N10 | Menu and UI transition animation Off | `motion.reduce_motion` | Off; OS reduce-motion as first value | B | N, O |
+| N05 | Static menu backgrounds | `motion.menu_animation` | `follow` | B | N, C |
+| N10 | Menu and UI transition animation Off | `motion.menu_animation` | `follow` | B | N, O |
+| — | Reduce motion (all): umbrella for O09, O11, O13, O14, O17, N05, N10 | `motion.reduce_motion` | Off; OS reduce-motion as first value | B | O, N |
 
-Shake and bob default to Reduced because core policy makes them a safe default, unless the designer
-explicitly chooses otherwise. Full Off always exists. `—` keys are not in the shared registry yet;
+Shake, bob and weapon sway default to Reduced because core policy makes them a safe default, unless
+the designer explicitly chooses otherwise. The `follow` keys use `motion.reduce_motion` until the
+player sets them to `on` or `off`. Full Off always exists. `—` keys are not in the shared registry yet;
 add a project key in `ACCESSIBILITY.md` when the signal is present.
 
 ## How to implement
@@ -48,8 +50,13 @@ add a project key in `ACCESSIBILITY.md` when the signal is present.
   feeds it; nothing moves the camera behind its back.
 - `final_shake = sum(all shake sources) × motion.camera_shake`. **All** sources: hits, explosions,
   landings, recoil, boss stomps, scripted events, **cutscenes**, death, and HUD shake.
-- `final_bob = sum(bob, sway, breathing) × motion.head_bob`, covering walk, sprint, crouch, swim,
-  climb, ladders, vehicles and scripted walking.
+- `final_bob = sum(bob sources) × motion.head_bob`, covering walk, sprint, crouch, swim, climb,
+  ladders, vehicles and scripted walking.
+- `final_sway = sum(weapon sway, breathing, held-item idle motion) × motion.weapon_sway`. This is
+  the visual motion of the held item only; aim accuracy, spread and recoil do not change with it
+  (aim stabilisation is `input.aim_stabilization` in
+  [combat-aiming-stealth](combat-aiming-stealth.md)). A player can keep head bob and remove sway,
+  or the reverse.
 - `effect_strength = authored × motion.screen_effects` for vignette, damage overlays, distortion
   and film grain.
 - Chromatic aberration follows `motion.chromatic_aberration` and depth of field follows
@@ -62,16 +69,28 @@ add a project key in `ACCESSIBILITY.md` when the signal is present.
 - When shake or an overlay carried information (a hit, low health, danger direction), keep that
   information through another cue: a HUD indicator, a sound with a caption, or rumble.
 
-### reduce_motion and OS preferences
+### reduce_motion (umbrella) and its per-effect keys
 
-- `motion.reduce_motion` stops **decorative and automatic** motion: animated and parallax menu
-  backgrounds (N05), UI transitions (N10, made instant), parallax and background scrolling (O17),
-  wobbling text, zoom pulses and dynamic FOV (O13), speed lines (O14), and automatic camera swings
-  (O09, O11).
-- It does not overwrite values the player set by hand. Shake, bob and blur keep their own sliders.
-  Presets such as "Less visual activity" are editable patches.
-- Import the OS reduce-motion preference as the **first value** for `motion.reduce_motion`, shake, bob
-  and blur, only while the player has not set them. Sources: CSS
+- `motion.reduce_motion` is the "Reduce motion (all)" umbrella for **decorative and automatic**
+  motion. Each effect class has its own `follow` / `off` / `on` key:
+
+  | Key | Covers | Resolve as |
+  |-----|--------|------------|
+  | `motion.auto_camera` | Automatic recentring (O09) and camera rotation (O11) | `resolve_toggle("motion.auto_camera", not reduce_motion)` |
+  | `motion.fov_effects` | Sprint, aim and boost FOV changes, zoom pulses (O13) | `resolve_toggle("motion.fov_effects", not reduce_motion)` |
+  | `motion.speed_lines` | Speed lines and radial blur (O14) | `resolve_toggle("motion.speed_lines", not reduce_motion)` |
+  | `motion.parallax` | Parallax and background scrolling (O17) | `resolve_toggle("motion.parallax", not reduce_motion)` |
+  | `motion.menu_animation` | Animated menu backgrounds (N05), UI transitions (N10, made instant), wobbling text | `resolve_toggle("motion.menu_animation", not reduce_motion)` |
+
+  `true` means the effect plays. `follow` uses the umbrella; `on` or `off` overrides it, so a player
+  can keep parallax with everything else reduced, or remove only speed lines. The resolver and the
+  unregistered-key fallback are in [architecture](../architecture.md) section 1.
+- The umbrella does not overwrite values the player set by hand. Shake, bob, sway and blur keep
+  their own sliders, and a per-effect key set to `on` or `off` keeps its value when the umbrella
+  changes. Presets such as "Less visual activity" are editable patches.
+- Import the OS reduce-motion preference as the **first value** for `motion.reduce_motion`, shake,
+  bob, sway and blur, only while the player has not set them. The per-effect keys stay `follow`
+  and pick it up through the umbrella. Sources: CSS
   [`prefers-reduced-motion`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/prefers-reduced-motion)
   (mirror it in canvas and WebGL code too), macOS
   [`accessibilityDisplayShouldReduceMotion`](https://developer.apple.com/documentation/appkit/nsworkspace/accessibilitydisplayshouldreducemotion),
@@ -104,8 +123,8 @@ add a project key in `ACCESSIBILITY.md` when the signal is present.
 
 ### Automatic camera movement (O08–O11, O13, O14)
 
-- Automatic recentring (O09) and auto-rotation (O11) stop under `motion.reduce_motion`; a manual
-  recentre action stays bound.
+- Automatic recentring (O09) and auto-rotation (O11) stop when `motion.auto_camera` resolves to
+  off (by default, when `motion.reduce_motion` is on); a manual recentre action stays bound.
 - Scripted camera pulls toward points of interest (O10) become a marker, a sound cue or a prompt to
   look. Never take the camera without a reduced alternative.
 - **Avoid forced or continuous rotation.** In a recorded playthrough of the Redot jam entry *Last
@@ -129,7 +148,8 @@ add a project key in `ACCESSIBILITY.md` when the signal is present.
 ### 2D games
 
 - Scrolling speed, screen shake, zoom punches, parallax layers, screen-wipe transitions and animated
-  backgrounds all route through CameraComfort or `motion.reduce_motion`.
+  backgrounds all route through CameraComfort or the per-effect keys above (`motion.parallax`,
+  `motion.menu_animation`).
 - Under reduced parallax, background layers lock or move with the foreground; the gameplay layer still
   scrolls so navigation is unaffected.
 
@@ -177,7 +197,7 @@ configuration; neither does any other source.
 
 ## Verify
 
-Run the same route with designer defaults, then with shake 0, bob 0, blur off, effects 0,
+Run the same route with designer defaults, then with shake 0, bob 0, sway 0, blur off, effects 0,
 chromatic aberration off, depth of field off and `motion.reduce_motion` on:
 
 - [ ] First-launch logos, menu, character creation and loading. Menu backgrounds and transitions are
@@ -195,6 +215,12 @@ chromatic aberration off, depth of field off and `motion.reduce_motion` on:
 - [ ] Camera assist and reduced motion on together: manual input controls the view.
 - [ ] Screen effects 0 with chromatic aberration and depth of field on, then the reverse: each key
       changes only its own effect.
+- [ ] Head bob 0 with weapon sway 100%, then the reverse: each changes only its own motion, and aim
+      accuracy is the same at every sway value.
+- [ ] Per-effect overrides: with `motion.reduce_motion` on, set one per-effect key (for example
+      `motion.parallax`) to `on`; only that effect returns. With the umbrella off, set one key to
+      `off`; only that effect stops. Toggle the umbrella afterward: overridden keys keep their
+      values, `follow` keys change. Repeat for each per-effect key the game ships.
 - [ ] Settings persist across restart and are not stored in story saves.
 
 An unaffected tester's comfort does not prove the configuration works for motion-sensitive players.
@@ -208,5 +234,8 @@ An unaffected tester's comfort does not prove the configuration works for motion
 - Treating a 2D game as exempt → scrolling, parallax, zoom and shake still count.
 - Animated settings screen that ignores reduced motion → the settings UI obeys its own settings.
 - Reduced motion overwriting the player's own shake value → it covers decorative motion only.
+- One "reduce motion" switch for every decorative effect → keep the umbrella, but give each effect
+  class its own `follow` / `off` / `on` key.
+- Weapon sway on the head-bob slider → `motion.weapon_sway` is its own key.
 - Forced continuous camera rotation → keep turning under player control.
 - Removing damage overlays with no replacement cue → keep the information in another channel.

@@ -18,17 +18,20 @@ of any high-contrast mode: [photosensitivity](photosensitivity.md). Guidance pai
 | V25 | Redundant symbols, labels or patterns for every colour meaning | — (always on) | On | B | V, C |
 | V23 | Protan / deutan / tritan palette presets | `visual.color_profile` | `none` | C | V |
 | V24 | Custom colour per semantic role | `visual.color_profile` = `custom` + `visual.custom_colors` | Designer colours, `""` | C | V |
-| V26 | Enemy / ally outlines | `visual.high_contrast` (outlines) | Off; OS increase-contrast as first value | C | V |
-| V27 | Interaction highlights | `visual.high_contrast` (outlines), `guidance.highlights` | Off / `follow` | C | V, C |
-| V28 | Traversable platform and edge outlines | `visual.high_contrast` (outlines) | Off | C | V |
+| V26 | Enemy / ally outlines | `visual.outline_enemies`, `visual.outline_allies` (umbrella `visual.high_contrast`) | `follow`; umbrella Off, OS increase-contrast as its first value | C | V |
+| V27 | Interaction highlights | `visual.outline_interactables` (umbrella `visual.high_contrast`), `guidance.highlights` | `follow` / `follow` | C | V, C |
+| V28 | Traversable platform and edge outlines | `visual.outline_hazards` (umbrella `visual.high_contrast`) | `follow` | C | V |
 | V29 | Background dimming / foreground isolation | `visual.background_dim` (0–0.75) | 0.0 | C | V, C |
 | V35 | Brightness / gamma | `visual.brightness` | 1.0 | C | V, N |
 | V36 | HDR peak and paper-white comfort | — | Bounded output | C | V, N, P |
 
-`visual.high_contrast` controls outlines only (V26–V28). Background dimming is its own key,
-`visual.background_dim`, so a player can have outlines without a darker world, or the reverse. If
-players need outline classes separately (enemies but not interactables), add per-class project keys
-in `ACCESSIBILITY.md` and let a preset set them together.
+`visual.high_contrast` is the umbrella for outlines only (V26–V28). Each outline class has its own
+`follow` / `off` / `on` key: `visual.outline_enemies`, `visual.outline_allies`,
+`visual.outline_interactables` and `visual.outline_hazards` (hazards, ledges and platform edges).
+`follow` uses the umbrella; `on` or `off` overrides it, so a player can outline enemies but not
+interactables, or keep hazard edges with everything else off. Add a class key whenever the game
+has that class; never ship only the umbrella. Background dimming is its own key,
+`visual.background_dim`, so a player can have outlines without a darker world, or the reverse.
 
 ## How to implement
 
@@ -116,7 +119,11 @@ in `ACCESSIBILITY.md` and let a preset set them together.
 
 - Implement as a render feature driven by tags: `enemy`, `ally`, `interactive`, `hazard`,
   `traversable`. Outline colours come from ColorTokens and keep their paired symbols.
-- `visual.high_contrast` turns the outlines on. It does not dim anything.
+- Each tag reads its class key through the follow resolver (architecture section 1):
+  `resolve_toggle("visual.outline_enemies", high_contrast)`, and the same for allies,
+  interactables and hazards (`hazard` and `traversable` tags both use `visual.outline_hazards`).
+  Turning the umbrella on or off changes only classes still set to `follow`. Nothing here dims
+  anything.
 - Background dimming (V29, `visual.background_dim`) desaturates or darkens non-tagged scenery by
   the chosen amount. Hazards, landing geometry, depth cues and projectiles stay at full clarity.
 - Outlines must not hide landing surfaces (V28) or replace recoil and telegraph animation.
@@ -199,6 +206,10 @@ too; no palette is safe for every vision difference or every background.
 - [ ] Turn on `visual.high_contrast` in a busy encounter: enemies, allies, interactables and hazards
       are outlined and the background is not dimmed. Then set `visual.background_dim` with outlines
       off: scenery darkens and hazards stay visible. Test both together.
+- [ ] With the umbrella on, set one class key to `off` (for example `visual.outline_interactables`):
+      only that class loses its outline. With the umbrella off, set one class to `on`: only that
+      class is outlined. Toggle the umbrella afterward: the overridden class keeps its value. Repeat
+      for each class key the game ships, and after restart.
 - [ ] Set custom colours, restart, and load an old save: `visual.custom_colors` is restored and
       every role uses the chosen colour.
 - [ ] Combine high contrast with `motion.reduce_flashing`: no new stripes, strobes or bright pulses.
