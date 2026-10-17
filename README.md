@@ -123,7 +123,7 @@ sources:
 - player communities;
 - open-source code.
 
-The reports were compiled by AI research agents (GPT-6.1-Sol via Codex) and synthesised by Claude.
+The reports were compiled by AI research agents (6.1 Sol) and synthesized by Opus 5.5.
 Unverified items are labelled `UNVERIFIED`. The installed skill does not load these reports. They
 exist so that claims can be checked and updated.
 
