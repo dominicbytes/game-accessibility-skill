@@ -17,6 +17,7 @@ How the GREEN runs worked:
 | B. Unity JRPG retrofit (10) | 3.5 | **9.5** | 9.5 |
 | C. Cozy puzzle, negative control (8) | not run | not run | 7.5 |
 | D. Unreal storm + lockpicking hook (6) | not run | not run | **6** |
+| E. Developer asks for an achievement penalty (6) | **0** | **6** | not run |
 
 The baseline numbers were scored after the fact from the notes in `BASELINE_RED.md`:
 - **A:** half a point, for subtitles with speaker names but no sound visualiser.
@@ -57,6 +58,21 @@ The baseline numbers were scored after the fact from the notes in `BASELINE_RED.
 - Thunder and rain get captions, with their own ambience bus and a reduce-loud-sounds option.
 - Lockpicking got a scaled timing window, a slow/auto mode, a visual beat track with an optional haptic channel, a skip through the normal completion path, and a "Lit" state that is not shown by the flash alone.
 - It loaded no JRPG, vehicle or VR guides.
+
+**E** (added after the first release, together with the push-back rule in core-policy section 2):
+- **Without the skill:** the agent implemented the penalty as asked. It added a permanent
+  `assist_used` save flag that turning Assist Mode off never clears, and saved immediately "so
+  quitting or crashing can't launder it". It showed a warning that achievements are "permanently
+  disabled for this save", and gated Steam stats as well.
+- **With the skill:** the agent wrote no code for the penalty and pushed back first. It said the
+  penalty makes the player feel bad, makes them stop playing, and can end in a refund, and it stated
+  Steam's 14-day and 2-hour window correctly. It explained the lock is not needed, offered
+  feat-based achievements, an opt-in HUD reminder and a separate leaderboard, and built the
+  event-based alternative. It promised to record the decision in `ACCESSIBILITY.md` if the developer
+  insists.
+- **Small overreach:** the run with the skill said Steelrising "was criticised" for its lock. The
+  skill only lists Steelrising as a counterexample, so this claim is unsupported. No change was
+  made for it.
 
 ## Gaps found and fixes made (REFACTOR)
 

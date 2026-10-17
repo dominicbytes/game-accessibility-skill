@@ -150,6 +150,10 @@ progress; suspend must work at that moment.
 - An existing project with difficulty-gated achievements is a conflict: report it to the owner and
   propose redesigns. Do not silently implement a penalty or rewrite published definitions. Separate
   leaderboards are an owner decision, not a default.
+- **If the developer asks for the penalty** ("disable trophies when assist mode is on"), push back
+  first. Use the script in core-policy section 2, "When the developer asks for a penalty": it
+  makes players feel bad, they stop playing, and the worst case is a refund inside Steam's 2-hour
+  and 14-day window.
 - `system.assist_indicator` is an opt-in HUD reminder of active assists. It is never shown on saves,
   endings or results.
 

@@ -123,6 +123,7 @@ proof that an API exists in the project's version.
 | "Accessibility settings go in a later milestone" | Hooks ship with the feature. A QTE system without its auto path is unfinished. |
 | "Screen reader support is too expensive; skip it" | Menu narration is Baseline. Use the engine's accessibility tree or TTS. Only full nonvisual *gameplay* is Advanced, and it gets a scope decision. |
 | "Exclude assist users from the Hard achievements" | Forbidden. Achievements read events, never settings. Report existing conflicts to the owner. |
+| The developer asks to turn off achievements or trophies when an option is on | Push back before coding. Explain that it makes players feel bad, makes them stop playing, and can end in a Steam refund. Offer alternatives. See core-policy section 2, "When the developer asks for a penalty". |
 | "There's an Easy mode, so assists are covered" | One preset is not independent options. Expose the specific barrier: damage, timing, fall death, resources, speed. |
 | "A colour-blind filter covers colour" | Pair every colour with a symbol, shape or label first. Palettes are per-element. Filters are extra at most. |
 | "It's just a cosmetic flicker or tint" | You may be creating a barrier: a flash hazard, colour-only state or sound-only cue. Check signals for every new feature. |

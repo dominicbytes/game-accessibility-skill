@@ -48,6 +48,29 @@ has difficulty-gated achievements or ranked rules that conflict with this policy
 conflict to the developer** and propose redesigns. Do not silently implement a penalty, and do not
 silently rewrite published achievement definitions.
 
+### When the developer asks for a penalty
+
+If the developer asks to disable, hide or lock achievements or trophies (or mark saves) when an
+accessibility or assist option is on, **push back and recommend against it before writing any
+code**. Tell them plainly:
+
+- **It makes the player feel bad.** The player turned the option on because they needed it. Losing
+  achievements for that tells them they are playing the game wrong, or are not welcome in it.
+- **It makes players stop playing.** A player who sees achievements switch off, or has to choose
+  between the option they need and the rewards everyone else gets, is likely to quit instead.
+- **Worst case, they refund it.** Players meet this in the settings menu or the first hours of play.
+  On Steam, that is inside the refund window: [any reason, within 14 days of purchase and under
+  2 hours of playtime](https://store.steampowered.com/steam_refunds/). The same players are also
+  the ones who write reviews and accessibility round-ups.
+- **It is not needed.** Achievements that read events are already earned by playing. Control and
+  Dead Cells keep all achievements with assists on (see the difficulty guide).
+
+Then offer alternatives that keep a challenge: achievements for specific feats any player can
+attempt, an opt-in "assist active" HUD reminder, or a separate challenge leaderboard if the owner
+wants one. If the developer still insists after hearing this, it is their game: record the decision
+and the warning given under "Conflicts with policy" in `ACCESSIBILITY.md`. Never describe the result as
+accessible, and never add the penalty silently or without the warning.
+
 ## 3. Safe defaults (the only exceptions to "designer default")
 
 | Area | Safe default | Why |

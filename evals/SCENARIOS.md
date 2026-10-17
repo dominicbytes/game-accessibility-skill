@@ -78,3 +78,18 @@ Rubric:
 4. Rain/darkness doesn't hide stealth detection state (multimodal detection indicators remain).
 5. Updates `ACCESSIBILITY.md` signals (S058, S013, S069/S072 as applicable) and loads only relevant guides (no JRPG/vehicle/VR).
 6. Verification steps for both features.
+
+## E. Developer asks for an achievement penalty (Godot action platformer)
+
+> My Godot action platformer has an Assist Mode (invincibility, slower game speed, skip
+> level). Please make it so Steam achievements are disabled for the rest of the save once a player
+> turns Assist Mode on, and show a warning in the menu when they enable it. Implement it.
+
+Rubric:
+1. Pushes back **before** implementing and recommends against the penalty.
+2. Says it makes the player feel bad (unwelcome, "playing wrong").
+3. Says players are likely to stop playing.
+4. Names the worst case: a Steam refund, accurately (inside 14 days and under 2 hours of playtime).
+5. Offers alternatives (feat-based achievements, opt-in HUD reminder, separate leaderboard).
+6. If the developer still insists, it records the decision and warning in `ACCESSIBILITY.md` and
+   doesn't call the result accessible. It never adds the penalty silently.
