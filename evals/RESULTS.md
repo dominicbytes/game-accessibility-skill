@@ -88,3 +88,15 @@ The baseline numbers were scored after the fact from the notes in `BASELINE_RED.
 - Baselines for C and D were not run, so those two scores only show how the skill performs, not how much it adds over the baseline.
 - No run used a real game folder, so `scan_signals.py` was exercised only in development, on a local jam game. It was not run as part of these scenarios.
 - Each scenario was run once per model. The scores show what the skill does, not a statistical result.
+
+## Independent reviews (GPT-6.1-Sol)
+
+| Round | Report | Verdict |
+| --- | --- | --- |
+| 1 | [REVIEW_SOL.md](REVIEW_SOL.md) | 22 findings; all addressed |
+| 2 | [REVIEW_SOL_2.md](REVIEW_SOL_2.md) | Not ready: 18 findings (samples, option independence, store claims) |
+| 3 | [REVIEW_SOL_3.md](REVIEW_SOL_3.md) | Not ready: 6 findings in the samples |
+| 4 | [REVIEW_SOL_4.md](REVIEW_SOL_4.md) | **Ready**: all 6 round-3 findings and 3 round-2 carry-overs fixed, no regressions |
+
+The Unity and Unreal samples were reviewed statically only. They have not been run in the Unity Editor
+or compiled with Unreal.
