@@ -1,0 +1,23 @@
+{
+    "name": "com.dominicbytes.game-accessibility",
+    "version": "1.0.0",
+    "displayName": "Game Accessibility (sample)",
+    "description": "Sample implementation of the game-accessibility skill: a registry-backed accessibility settings store with presets, OS-preference import and versioned persistence, plus AssistPolicy, InputAssist, FlashGuard, CaptionBus and ColorTokens in plain C#, and small Unity adapters (bootstrap, camera comfort, guidance channels, content variants, captions, audio mixer binding, narration routing). Not compiled in the source repository; see GUIDE.md.",
+    "unity": "2022.3",
+    "license": "MIT",
+    "keywords": [
+        "accessibility",
+        "a11y",
+        "subtitles",
+        "captions",
+        "assist",
+        "settings"
+    ],
+    "author": {
+        "name": "dominicbytes",
+        "url": "https://github.com/dominicbytes/game-accessibility-skill"
+    },
+    "dependencies": {
+        "com.unity.ugui": "1.0.0"
+    }
+}

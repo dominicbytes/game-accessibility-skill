@@ -1,0 +1,34 @@
+{
+    "name": "GameAccessibility.Unity",
+    "rootNamespace": "GameAccessibility.UnityBridge",
+    "references": [
+        "GameAccessibility.Core",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.modules.accessibility",
+            "expression": "1.0.0",
+            "define": "GAME_A11Y_ACCESSIBILITY_MODULE"
+        },
+        {
+            "name": "com.unity.textmeshpro",
+            "expression": "3.0.0",
+            "define": "GAME_A11Y_TMP"
+        },
+        {
+            "name": "com.unity.ugui",
+            "expression": "2.0.0",
+            "define": "GAME_A11Y_TMP"
+        }
+    ],
+    "noEngineReferences": false
+}

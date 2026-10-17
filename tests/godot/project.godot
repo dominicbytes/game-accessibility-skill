@@ -1,0 +1,12 @@
+; Minimal headless test project for the game-accessibility Godot/Redot sample.
+; tests/run_godot_tests.sh copies the addon into addons/ before running res://run_tests.gd.
+
+config_version=5
+
+[application]
+
+config/name="game-accessibility tests"
+
+[audio]
+
+general/text_to_speech=true

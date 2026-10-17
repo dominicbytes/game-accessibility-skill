@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.godot/
+tests/godot/addons/
+tests/godot/.godot/
+.DS_Store
+Thumbs.db
+
+# Unity Core test harness (tests/unity_core/run_unity_core_tests.sh)
+tests/unity_core/.cache/
+tests/unity_core/.build/
